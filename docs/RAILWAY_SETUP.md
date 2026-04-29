@@ -86,7 +86,18 @@ Use MCP `set-variables` with entries like `BASE_URL=https://your-app.up.railway.
 
 ## 4. GitHub → Railway (auto-deploy)
 
-In the Railway project: connect this repository so pushes to `main` trigger deploys. The MCP does not replace linking the GitHub repo in the dashboard.
+1. **Install the [Railway GitHub App](https://github.com/apps/railway-app)** on your account (or org) and grant access to **`rvegajr/CaptionFlow`** (or “All repositories” during setup). Without this, `railway add --repo …` returns **repo not found**.
+2. From the repo root, create a **GitHub-backed** service (example name used in this project: **`CaptionFlow-gh`**):
+
+   ```bash
+   railway add --repo rvegajr/CaptionFlow --service CaptionFlow-gh
+   ```
+
+3. Point the CLI at that service and set env vars (see §3), especially **`BASE_URL`** to this service’s public URL and **`DATABASE_URL='${{Postgres.DATABASE_URL}}'`** (single quotes).
+
+4. **Remove the old upload-only web service** (e.g. **`CaptionFlow`**) in the Railway project canvas if you no longer need it, so you are not paying for two Node services.
+
+Pushes to **`main`** on `rvegajr/CaptionFlow` then trigger builds for **`CaptionFlow-gh`**.
 
 ---
 
