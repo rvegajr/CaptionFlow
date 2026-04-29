@@ -1,0 +1,363 @@
+Ricardo Vega
+This meeting is being recorded. I am Ricky Vega, the code monkey.
+
+
+Jason Bock
+I'm Jason Bock, the designer. I don't know.
+
+
+Ricardo Vega
+That's perfect. Okay, so we're just going to – having a more precise detail in comparison to what you have already is going to be great.
+
+
+So real quick, you're – can you hear me?
+
+
+Jason Bock
+Yeah.
+
+
+Ricardo Vega
+Okay, cool. So basically what this is is – because you were saying some stuff that I felt needed to be captured individually.
+
+
+So real brief, it is a – it's something that does closed captioning better than YouTube's closed captioning because it sucks.
+
+
+Jason Bock
+Right. So this is a wrapper around an embedded YouTube video, and our wrapper is going to fire A closed captioning file in sync with the YouTube video to essentially override YouTube's built-in closed captioning.
+
+
+Ricardo Vega
+So it's essentially doing real-time translations?
+
+
+Jason Bock
+No. No. Someone will have to do a manual closed caption file. So they will upload either an SRT or a VTT closed captioning file.
+
+
+If someone plays that video, it will play that closed caption file.
+
+
+Ricardo Vega
+I see it. So it doesn't have to be. So real-time live is not required. It is a...
+
+
+Jason Bock
+It is not doing any translating because that's what YouTube does that is not very good or legal if you're trying to do accessibility.
+
+
+The problem is if I've got a class that has... YouTube video in it that I don't control, YouTube no longer has a way for the crowd to even recommend proper closed captioning for that file.
+
+
+So unless I can magically, and you can't message the creator, so unless they happen to read a message that I put in the chat under the video, there's no way to get them to fix the closed captioning.
+
+
+So we're overriding that process. The other thing we need to do, which was in the design that I sent to you, is we want to figure out how to integrate this as an LTI or similar into a learning management system so that it's embedded in the learning management system somewhere else.
+
+
+Ricardo Vega
+That's awesome. Okay, so, but as far as scope-wise, we don't need, we don't need, like, different roles or anything like that.
+
+
+It is an admin role. allows us to, I mean, I guess when a user uploads their own, what is it, VDT?
+
+
+Jason Bock
+VDT, Victor Tom Tom, or SRT is the simpler version.
+
+
+Ricardo Vega
+If they upload, they should be able to remove it, right?
+
+
+Jason Bock
+Sure. I'm debating, I think phase two is that we have a shared library of videos, and so if someone else has already made good closed captioning, you can borrow theirs.
+
+
+They can authorize you to borrow theirs, but I think the initial one is, I'm an instructor, I'm a worker at a university or a school, I fix the closed captioning, I load up the file to our overlay, and it just plays the video and the closed captioning in there.
+
+
+That's the simple start.
+
+
+Ricardo Vega
+It's almost like a closed captioning harness kind of thing.
+
+
+Jason Bock
+Yeah, I mean, that's essentially all it is. And I don't think the... Other thing that we need to worry about is a lot of people, especially if they're on a tablet or a laptop, like to go full screen with a video.
+
+
+So we've got to do that. But otherwise, the overlay could literally be underneath the YouTube embed. We don't have to put anything on top of the YouTube video.
+
+
+Now, if we go full screen, maybe we somehow fake out YouTube. I don't know if that's possible to go full screen and still leave like a black bar at the very bottom to do the closed captioning.
+
+
+Ricardo Vega
+Full screen is very difficult to do that. You would have to – because I've had to deal with that with a field view application that I have because I want to do scoreboards on a video stream.
+
+
+But if you're a harness and you're rendering the video, then you would – let's make that a version two thing.
+
+
+But – because then it would be like I'm intercepting the stream and I'm on a – And changing the stream, so, but, well, yeah, okay.
+
+
+That's simple enough. Let me focus on that.
+
+
+Jason Bock
+That's it in a nutshell. And I think, again, very low data storage requirements on our part.
+
+
+Ricardo Vega
+No, for real.
+
+
+Jason Bock
+You know, because we're literally, those closed caption files are literally text files with numbers in them.
+
+
+Ricardo Vega
+All right. Nice. Yeah. All right.
+
+
+ACTION ITEM
+Create private GitHub repo for CaptionFlow; add Jason
+So, it's pretty low-hanging fruit, so. Let me, let me, let me see if I can whip something in that.
+
+
+Cool.
+
+
+Ricardo Vega
+Cool. I will, I'll see if, I'll probably create a GitHub, private, add you to it, and then we will, and then, just take it from there, see what I can, see what I come up with.
+
+
+Jason Bock
+Cool.
+
+
+Ricardo Vega
+All right.
+
+
+Jason Bock
+That's it.
+
+
+Ricardo Vega
+Rubik Flow. I've processed all of our sales changes. I've paid her. And I'm running through another battery of tests where I'm basically just verifying that I did it.
+
+
+And then we'll do another deployments, and then we'll unleash her again.
+
+
+Jason Bock
+Sounds good.
+
+
+Ricardo Vega
+Nice. And, I mean, she's extremely affordable. I want to pay her.
+
+
+Jason Bock
+And very good.
+
+
+Ricardo Vega
+No, no. I mean, it's like, the quality you're getting for her, she's amazing. And not only that, but she, I asked her, was like, man, you know, one of my new clients is net 60.
+
+
+ACTION ITEM
+Send $300 to Jason for AI work
+So, and I'm like, but I'm going to, like, give me a chance. And she goes, that's fine. So she's delayed taking a payment for me for two or three weeks.
+
+
+So, and I should have said, just sent you 300 to pay for, and if you haven't gotten it yet, let me know.
+
+
+But you should get it, like, when the next day or two. But I should send, I'll be, I'll be sending you 300 because of your, um...
+
+
+uh, I walk or, Uh, our巨大ist, Uh, Because of your AI thing.
+
+
+Jason Bock
+Oh, okay. From Noctusoft. I wasn't expecting that, but that's cool.
+
+
+Ricardo Vega
+Yeah, dude, I mean, I fixed a problem, and I know you're going through some , and I mean, again, I mean, I mean, I mean, you, you trusted me on AI thing, dude, it's kind of the least I can do, so.
+
+
+Jason Bock
+Well, I appreciate that. But I, look, this is, if, if, even if we could do the simple version of this YouTube thing, I think there are multiple institutions we could sell it to if we can figure out what it's going to cost us to run it and make sure we make money on it.
+
+
+Because everybody right now in this accessibility space is absolutely schools and universities. We talked to one company about their tool to help remediate PDFs.
+
+
+They wanted $100,000 a year for a site license for our school.
+
+
+Ricardo Vega
+Good Lord.
+
+
+Jason Bock
+You know, I've talked to others that are. $75,000 to $100,000 for modestly complex software, but nobody's, and like this company that I told you about, they're pulling out of the space that allowed people to do this.
+
+
+So there's not a tool to do it anymore that I'm aware of. So anyway, this could be a real moneymaker at an easy thing.
+
+
+I'd like to, we'd want to consider how to price it at an institutional level, because the reality of that pricing is that it sounds really scary.
+
+
+5,000 employees, but that 5% that would actually use the product is approaching zero. I mean, it's small.
+
+
+Ricardo Vega
+I don't want to gouge people, man. mean, a pay-by-use kind of thing, know, that five seconds, five seconds every time we use it or something, like pay-by-use.
+
+
+Some get scales that's affordable, but it does.
+
+
+Jason Bock
+Yeah, the problem is that universities can't do that. They won't buy something like that because they can't control the cost.
+
+
+don't know how much it's going to be. So the way to do it is to have a site license with a max use on it and figure out some way to manage that, whether it's views or whatever that it costs us.
+
+
+And when they're hitting, assume that they're going to go over 20% and you're not going to charge them because that's the way most are in the university space.
+
+
+If you go over, they don't like, oh, everything's turning off tomorrow, dude, you know, type of thing because that's stupid and bad for business.
+
+
+But, you know, you just on the next contract, then you just up it for that next thing. That's the way to sell to universities because there's going to be limited use out there, you know.
+
+
+But we've got to figure out, the main thing to figure out is how much it would run this. It may be, I'm hoping it's alarmingly inexpensive, that our costs are, you know, hundreds, not, you know, thousands upon thousands.
+
+
+Ricardo Vega
+I'd have to see, because I don't know. I need to make sure, I mean, I'd like to say that, I mean, if we're not relay streaming, then I don't see why it would cost us at all.
+
+
+But if we are, which I mean, just, I don't know if, as far as like, oh, I'm taking this and sending it, and I don't want to, I need to know more, because I can't really speak to this one.
+
+
+Jason Bock
+No, I'm not, I'm not, yeah, I get it. We need to figure it out. But to me, the, well, we are essentially streaming something because we're streaming the text underneath the YouTube video.
+
+
+So there is some processing for that, and it's got to, the critical. piece is it's got to time itself right with the YouTube video.
+
+
+And that also means what do we do with the controls? If I pause the YouTube video, it's got to be able to detect that and also pause the closed captioning, right?
+
+
+Ricardo Vega
+That's extremely useful to get in text.
+
+
+ACTION ITEM
+Investigate YouTube embed API for playback state/time; then implement sync pause/seek per WCAG 2.1 AA
+Yeah. So those are the tough parts.
+
+
+Ricardo Vega
+And forwarding also, like it needs to be in sync, basically.
+
+
+Jason Bock
+Yes. It always needs to be able to be in sync. And I don't know what YouTube is streaming in their embed that could give you that information.
+
+
+I'm not sure.
+
+
+Ricardo Vega
+We'll figure that out.
+
+
+Jason Bock
+Okay. But it is, know that it is a legal requirement for accessibility that you can start and stop the video.
+
+
+Ricardo Vega
+Of course.
+
+
+Jason Bock
+But I mean, there's people that used to do stuff where they didn't do that, so they didn't have to worry about this sort of stuff.
+
+
+They just played the whole file straight through. You legally can't do that anymore for accessibility. Someone's got to be able to pause it.
+
+
+You know, started over, that sort of thing.
+
+
+Ricardo Vega
+But we will, I mean, what is it, WAGC 2.4 or something like that?
+
+
+Jason Bock
+2.1 AA is what universities and public entities have to apply to, yeah.
+
+
+Ricardo Vega
+So it looks like we're going to have to bake that in, like, as far as streaming. So we'll just make sure that, now that we've spoken it, we'll make sure that it's baked in also.
+
+
+Jason Bock
+Okay.
+
+
+Ricardo Vega
+All right.
+
+
+Jason Bock
+All right, cool.
+
+
+Ricardo Vega
+All right, we'll communicate soon.
+
+
+Jason Bock
+Talk to you later. Bye. Bye.
+
+
+
+CaptionFlow Utility
+Apr 28, 2026
+
+Share
+
+Action items
+
+Copy for
+ …
+
+Copy Follow-up Email
+Create private GitHub repo for CaptionFlow; add Jason ✨ @ 5:28
+Send $300 to Jason for AI work ✨ @ 6:38
+Investigate YouTube embed API for playback state/time; then implement sync pause/seek per WCAG 2.1 AA ✨ @ 11:17
+✨ Action Items Generated by AI
+Delete All
+Your Questions
+“So it's essentially doing real-time translations?”
+“allows us to, I mean, I guess when a user uploads their own, what is it, VDT?”
+“If they upload, they should be able to remove it, right?”
+“But we will, I mean, what is it, WAGC 2.4 or something like that?”
+Their Questions
+“And that also means what do we do with the controls? If I pause the YouTube video, it's got to be able to detect that and also pause the closed captioning, right?”

@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.envrc
+*.pem
+
+# Local databases / volumes
+.pgdata/
+
+# Test & coverage artifacts
+playwright-report/
+test-results/
+coverage/
+*.log
+
+# TypeScript / tooling caches
+*.tsbuildinfo
+.eslintcache
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE (keep team-shared editor config unignored if you add it under .vscode/)
+.idea/
+*.iml
+
+# Railway CLI local project link (optional: remove this line if your team commits `.railway/` on purpose)
+.railway/

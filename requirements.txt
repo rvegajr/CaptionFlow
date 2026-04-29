@@ -1,0 +1,130 @@
+# CaptionFlow — Requirements
+
+**Date:** Apr 28, 2026
+**Source of truth:** `golden_requirements.txt` (recorded conversation between Ricardo Vega and Jason Bock)
+**Status:** Phase 1 specification
+
+---
+
+## 1. Problem statement
+
+Instructors at schools and universities embed YouTube videos they do not own
+into their courses. YouTube's auto-generated captions are frequently wrong, and
+for accessibility purposes they are not legally defensible. YouTube no longer
+provides a practical way for a third party to correct the captions on a video
+they do not control, and there is no longer a viable commercial tool that fills
+this gap.
+
+CaptionFlow plays an **instructor-supplied caption file in sync with an
+embedded YouTube video**, overriding YouTube's built-in captions for that
+viewing context. Nothing more.
+
+## 2. Scope
+
+### In scope (Phase 1)
+
+A thin web wrapper around a YouTube embed that:
+
+1. Accepts an SRT or VTT caption file uploaded by an instructor.
+2. Renders the caption file's cues in sync with the embedded YouTube video.
+3. Tracks the YouTube player's play / pause / seek state and keeps captions in sync.
+4. Meets WCAG 2.1 AA for time-based media controls.
+
+### Explicitly out of scope (Phase 1)
+
+- Real-time speech-to-text / auto-generated captions on the YouTube audio. *(See §12 — this is rejected outright, not deferred.)*
+- Full-screen captioning over the YouTube player.
+- A shared / community caption library.
+- Multi-role permissioning beyond a single instructor/admin role.
+- Re-streaming or relaying YouTube video bytes.
+
+## 3. Users
+
+Phase 1 has one authenticated role:
+
+- **Instructor (admin).** Uploads, replaces, or removes a caption file for a YouTube video. Publishes the captioned page.
+
+End viewers (students) are unauthenticated. They open the captioned page or its LMS embed and watch.
+
+## 4. Functional requirements
+
+### 4.1 Caption upload and management
+
+- **FR-1.** Instructor can upload a `.srt` or `.vtt` file and associate it with a YouTube video URL or video ID.
+- **FR-2.** Instructor can replace or remove a caption file they uploaded.
+- **FR-3.** Uploaded files are validated as parseable SRT/VTT before being saved. Invalid files are rejected with a clear error.
+
+### 4.2 Playback and synchronization
+
+- **FR-4.** The page renders an embedded YouTube player and a caption display region.
+- **FR-5.** Phase 1 places the caption display **directly underneath** the YouTube embed. Overlaying captions on top of the video is not required.
+- **FR-6.** As the YouTube player advances, the caption display shows the cue whose time range contains the player's current time.
+- **FR-7.** When the viewer **pauses**, captions hold on the current cue.
+- **FR-8.** When the viewer **plays** after pause, captions resume from the player's current time.
+- **FR-9.** When the viewer **seeks** forward or backward, captions jump to the cue at the new player time.
+- **FR-10.** One active cue is displayed at a time, matching the source file's timing.
+- **FR-11.** Caption text is real text — selectable, copyable, and screen-reader accessible.
+
+## 5. Non-functional requirements
+
+### 5.1 Accessibility
+
+- **NFR-1.** Playback controls and caption presentation satisfy **WCAG 2.1 AA** for time-based media. In particular: viewer can pause, resume, and restart; controls are keyboard-operable and labeled; captions are present and synchronized.
+
+### 5.2 Cost / data footprint
+
+- **NFR-2.** CaptionFlow **does not relay video**. All video bytes flow directly from YouTube to the viewer; we never proxy them.
+- **NFR-3.** Storage per video is on the order of kilobytes (caption text only). The system has no media-storage requirements.
+
+### 5.3 Sync quality
+
+- **NFR-4.** Caption-to-video drift stays within roughly **250 ms** during normal playback — small enough that a reader does not notice.
+
+## 6. Integrations
+
+- **INT-1.** Use the **YouTube IFrame Player API** to read playback state (`PLAYING`, `PAUSED`, `BUFFERING`, `ENDED`) and `getCurrentTime()` for sync.
+- **INT-2.** Ship as an **LTI 1.3** tool from day one. Instructors add CaptionFlow to a course in their LMS (Canvas, Blackboard, Moodle, D2L); a launch from the LMS opens the captioned-video surface for the viewer. The LTI launch context is also how we identify the viewer's institution for licensing/usage purposes (resolves OQ-1).
+- **INT-3.** Provide a direct embeddable URL (`<iframe>` target) as a fallback for environments where LTI is not available. This is secondary to INT-2.
+
+## 7. Data model (minimal — this is the entire persisted set)
+
+```
+Instructor   { id, email, password_hash, created_at }
+Caption      { id, instructor_id, youtube_video_id, format ('srt'|'vtt'),
+               content (text), created_at, updated_at }
+```
+
+No transcripts table. No media storage. No analytics in Phase 1.
+
+## 8. Phase 2 (deferred — documented so we don't architect them out)
+
+- **P2-1. Full-screen captioning.** Render captions inside a fullscreen view; likely requires hosting the player in our own surface.
+- **P2-2. Shared caption library.** Instructors can publish a caption file; other instructors can authorize use of another instructor's caption for the same YouTube video.
+- **P2-3. Usage metering.** Count playback views per institution to support institutional licensing (see §9).
+- **P2-4. Machine translation of human-authored captions.** Generate additional language tracks from an instructor's uploaded SRT/VTT using a translation API; cache and serve them like any other track. **Rules:** (a) only the human-authored source track may be presented as accessibility-compliant; (b) every machine-translated track must be visibly labeled *"Machine-translated from \[source language\] — not certified for accessibility compliance"*; (c) translation never replaces the source track, only adds to it.
+
+## 9. Business constraints that affect the architecture
+
+Not features, but they constrain what the system must eventually be able to record:
+
+- **BC-1.** The product is sold via **institutional site license** with a usage cap. Universities will not buy pay-per-use because they cannot control the bill.
+- **BC-2.** Therefore the system must eventually count **playback views per institution** (Phase 2 — see P2-3).
+- **BC-3.** Exceeding the cap **does not** turn the service off; overage is reconciled at the next contract.
+
+## 10. Open questions
+
+- ~~**OQ-1.** How is an "institution" identified at view time?~~ *Resolved: via the LTI 1.3 launch context (see INT-2).*
+- **OQ-2.** Where do caption files live at rest — app DB, or object storage? Both are acceptable given the size; pick whichever is cheaper to operate.
+- **OQ-3.** Who handles LMS integration certification (Canvas, Blackboard, Moodle, D2L), and on what timeline?
+
+## 11. Action items captured from the meeting
+
+- Create private GitHub repository `CaptionFlow`; add Jason.
+- Investigate YouTube IFrame Player API for playback state/time; implement sync pause/seek to satisfy WCAG 2.1 AA.
+- (Operational) Send $300 to Jason for AI work.
+
+## 12. Decisions intentionally rejected (do not re-litigate without new evidence)
+
+These are recorded so they don't quietly drift back into scope under a new name.
+
+- **R-1. Real-time speech-to-text / auto-captioning of the YouTube audio.** Rejected because (a) auto-generated captions are not WCAG 2.1 AA compliant — the very thing the product is being purchased to satisfy; (b) STT services are charged per minute of audio, which destroys the near-zero operating cost that makes institutional licensing viable; (c) the YouTube IFrame API does not expose audio, so implementing this would require either a YouTube ToS violation or relaying video bytes (forbidden by NFR-2); (d) it places CaptionFlow in direct competition with a free YouTube feature instead of differentiating from it. *Note:* P2-4 (machine translation of a human-authored source track) is a different feature and is not affected by this decision.

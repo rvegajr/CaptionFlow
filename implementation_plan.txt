@@ -1,0 +1,1749 @@
+# CaptionFlow — Detailed Implementation Plan
+
+**Companion to:** `requirements.txt`
+**Supersedes:** the prior architect-level sketch. This document is the engineer-level plan.
+**Engineering doctrine:** TDD (Red → Green → Refactor) and ISP (small, consumer-specific interfaces).
+**Stack, locked:** TypeScript end-to-end, Node 20 LTS, Fastify, Drizzle ORM, Postgres, React 18, Vite 5 (multi-page), vanilla CSS, Vitest + Playwright, Railway for hosting.
+**Packaging goal:** one repository, one `package.json`, one build command, one start command, one Railway service. Anything that complicates that needs to justify itself.
+
+---
+
+## Table of contents
+
+0. Reading order and how to use this document
+1. Engineering principles — what TDD and ISP mean here, concretely
+2. Repository layout (the exact tree)
+3. Toolchain and versions
+4. `package.json` — canonical version
+5. TypeScript configuration (three configs, one tree)
+6. Vite configuration (multi-page, dev proxy)
+7. Database — Drizzle schema, migrations, and access layer
+8. Service layer — ISP-driven interfaces and implementations
+9. Fastify backend — bootstrap, plugins, route layout
+10. The cue parser — full TDD walkthrough
+11. The sync engine — full TDD walkthrough
+12. Frontend structure — the dashboard and the caption surface
+13. Vanilla CSS — file layout, tokens, conventions
+14. LTI 1.3 integration via `ltijs`
+15. Magic-link authentication (the backstop path)
+16. Testing strategy — every layer, every tool
+17. CI — GitHub Actions
+18. Railway deployment — config, env vars, DB
+19. Local development workflow
+20. Phased delivery, paced by TDD
+21. Code conventions
+22. Operations — logging, errors, health
+23. Security checklist
+24. Decisions intentionally deferred
+
+---
+
+## 0. Reading order and how to use this document
+
+If you are about to start coding, read sections **1, 2, 3, 4** in order, then jump to **20** to see what to build first, then return to the section that matches the unit you're building (10 for the parser, 11 for the sync engine, etc.).
+
+If you are reviewing this document for soundness, read **1, 7, 8, 11, 16** — those are the sections where the design decisions cluster.
+
+If you are an LLM coding agent acting on this document: every section is meant to be self-contained enough to drive a single unit of work. Do not skip §1; the discipline there is what makes the rest cheap.
+
+---
+
+## 1. Engineering principles — what TDD and ISP mean here, concretely
+
+### 1.1 TDD as practiced in this project
+
+The cycle is **Red → Green → Refactor**. Always.
+
+- **Red.** Before writing production code, write the smallest test that fails for the right reason. "Right reason" means: it fails because the production code is missing or incomplete, not because of a typo or missing import.
+- **Green.** Write the minimum code that makes the test pass. Resist generalizing. If a test only requires `return 2`, that is what you write. Generalization happens under pressure from the *next* test.
+- **Refactor.** With tests green, improve the code's structure without changing behavior. Run the tests after every change. If you can't refactor in confidence, the test suite is too coarse.
+
+**What TDD does not mean here:**
+
+- It does not mean "write tests for everything that exists." It means tests *drive* the existence of code.
+- It does not mean 100% line coverage as a target. Coverage is a diagnostic, not a goal.
+- It does not mean every test is a unit test. Integration and E2E tests can be the test that drives a design — they're slower, so we use them where unit tests can't reach (database queries, end-to-end LTI flow).
+
+**What we do not test:**
+
+- Drizzle's own behavior. We trust the library.
+- Fastify's routing. We trust the library.
+- Third-party API responses, except via recorded fixtures.
+
+### 1.2 ISP as practiced in this project
+
+A consumer should depend only on the methods it uses. We achieve this by writing **small, role-named interfaces**, and having a single concrete class implement several of them.
+
+**Example — the wrong way (one fat interface):**
+
+```ts
+interface CaptionService {
+  create(...): Caption;
+  update(...): Caption;
+  delete(...): void;
+  getById(...): Caption;
+  listByInstructor(...): Caption[];
+  search(...): Caption[];
+  countViews(...): number;
+}
+```
+
+A handler that just reads a caption ends up depending on `delete`, `update`, `countViews`, etc., which makes its tests bloated and its responsibilities unclear.
+
+**Example — the right way (segregated interfaces):**
+
+```ts
+interface CaptionReader {
+  getById(id: string): Promise<Caption | null>;
+  listByInstructor(instructorId: string): Promise<Caption[]>;
+}
+
+interface CaptionWriter {
+  create(input: NewCaption): Promise<Caption>;
+  update(id: string, patch: Partial<NewCaption>): Promise<Caption>;
+  delete(id: string): Promise<void>;
+}
+
+interface CaptionSearcher {
+  search(query: string): Promise<Caption[]>;
+}
+
+class PgCaptionRepo implements CaptionReader, CaptionWriter, CaptionSearcher {
+  // one implementation, three roles
+}
+```
+
+The route handler for `GET /api/captions/:id` accepts `CaptionReader`. Its test fake is two methods, not seven.
+
+**Naming convention:** role-named interfaces (`CaptionReader`, `MagicLinkSender`, `Clock`) are nouns describing capability. The implementation gets a prefix indicating its substrate (`PgCaptionRepo`, `ResendMagicLinkSender`, `SystemClock`).
+
+### 1.3 The interaction between TDD and ISP
+
+ISP makes TDD cheap. When the consumer depends on a two-method interface, the test fake is a two-method object literal, not a mocking framework call. **We do not use `jest.mock` or `vi.mock` for our own modules.** We pass plain object fakes that implement the small interface. This rule is what keeps the test suite readable five years from now.
+
+---
+
+## 2. Repository layout (the exact tree)
+
+```
+CaptionFlow/
+├── package.json
+├── package-lock.json
+├── tsconfig.json                  # base
+├── tsconfig.server.json           # for src/server (extends base)
+├── tsconfig.web.json              # for src/web (extends base)
+├── vite.config.ts                 # multi-page web build
+├── drizzle.config.ts              # drizzle-kit config
+├── vitest.config.ts               # vitest config (uses Vite)
+├── playwright.config.ts
+├── railway.toml
+├── nixpacks.toml                  # Railway build config (chosen over Dockerfile, see §18)
+├── docker-compose.yml             # local Postgres only
+├── .env.example
+├── .gitignore
+├── .editorconfig
+├── README.md
+├── requirements.txt               # untouched product spec
+├── golden_requirements.txt        # untouched transcript
+├── public/                        # static assets served as-is
+│   └── favicon.svg
+├── src/
+│   ├── shared/                    # types and pure logic shared by web + server
+│   │   ├── cues.ts                # Cue type + helpers
+│   │   ├── srt.ts                 # SRT parser (pure)
+│   │   ├── vtt.ts                 # VTT parser (pure)
+│   │   ├── youtube-id.ts          # URL → video ID parser (pure)
+│   │   └── result.ts              # Result<T, E> type for parser returns
+│   ├── server/
+│   │   ├── index.ts               # entry — boots the app
+│   │   ├── app.ts                 # buildApp(deps) — testable factory
+│   │   ├── config.ts              # env parsing + validation
+│   │   ├── db/
+│   │   │   ├── client.ts          # Drizzle pool factory
+│   │   │   ├── schema.ts          # Drizzle schema (tables)
+│   │   │   └── migrations/        # generated by drizzle-kit
+│   │   ├── repos/                 # Postgres-backed implementations of service interfaces
+│   │   │   ├── pg-caption-repo.ts
+│   │   │   ├── pg-instructor-repo.ts
+│   │   │   ├── pg-resource-repo.ts
+│   │   │   └── pg-institution-repo.ts
+│   │   ├── services/              # role interfaces (ISP)
+│   │   │   ├── caption-store.ts   # CaptionReader, CaptionWriter
+│   │   │   ├── instructor-store.ts
+│   │   │   ├── resource-store.ts
+│   │   │   ├── institution-store.ts
+│   │   │   ├── magic-link-sender.ts
+│   │   │   ├── clock.ts
+│   │   │   └── id-generator.ts
+│   │   ├── adapters/              # outbound integrations
+│   │   │   ├── resend-magic-link-sender.ts
+│   │   │   ├── system-clock.ts
+│   │   │   └── uuid-id-generator.ts
+│   │   ├── routes/
+│   │   │   ├── health.ts
+│   │   │   ├── auth.ts
+│   │   │   ├── captions.ts
+│   │   │   ├── resources.ts
+│   │   │   └── lti.ts
+│   │   └── lti/
+│   │       └── ltijs-setup.ts
+│   └── web/
+│       ├── index.html             # dashboard entry
+│       ├── caption-surface.html   # public caption surface entry
+│       ├── dashboard/
+│       │   ├── main.tsx
+│       │   ├── App.tsx
+│       │   ├── pages/
+│       │   │   ├── login.tsx
+│       │   │   ├── captions-list.tsx
+│       │   │   ├── caption-edit.tsx
+│       │   │   └── resources-list.tsx
+│       │   └── api-client.ts
+│       ├── caption-surface/
+│       │   ├── main.tsx
+│       │   ├── CaptionSurface.tsx
+│       │   ├── youtube-player.ts  # IFrame API wrapper (interface + impl)
+│       │   ├── sync-engine.ts     # the state machine + rAF loop
+│       │   └── cue-display.tsx
+│       ├── components/            # shared between dashboard and surface
+│       │   ├── Button.tsx
+│       │   ├── FormField.tsx
+│       │   └── FileDropZone.tsx
+│       ├── hooks/
+│       └── styles/                # vanilla CSS (see §13)
+│           ├── reset.css
+│           ├── tokens.css
+│           ├── base.css
+│           ├── components.css
+│           ├── dashboard.css
+│           └── caption-surface.css
+└── tests/
+    ├── unit/                      # co-located *.test.ts files preferred; this is for cross-cutting
+    ├── integration/               # uses Testcontainers Postgres
+    │   ├── pg-caption-repo.test.ts
+    │   ├── api-captions.test.ts
+    │   └── api-resources.test.ts
+    ├── e2e/                       # Playwright
+    │   ├── caption-surface.spec.ts
+    │   └── instructor-flow.spec.ts
+    └── fixtures/
+        ├── captions/
+        │   ├── valid-basic.srt
+        │   ├── valid-basic.vtt
+        │   ├── overlapping-cues.vtt
+        │   ├── crlf.srt
+        │   ├── bom.vtt
+        │   └── windows-1252-as-utf8.srt
+        └── youtube-events/
+            └── recorded-session-1.json
+```
+
+**Two structural rules embedded in this tree, worth being explicit about:**
+
+1. **`src/shared` is platform-neutral.** Anything in there must run in the browser and in Node, with no DOM and no Node APIs. The cue parser lives here precisely so the same code validates uploads on the server *and* parses files on the client.
+2. **`*.test.ts` lives next to its subject by default.** Cross-cutting integration and E2E tests live under `tests/`. This is the only test-location split.
+
+---
+
+## 3. Toolchain and versions
+
+| Tool | Version | Why |
+|---|---|---|
+| Node | 20 LTS | Long-term support; Fastify 4 baseline; `node:test` available if we ever want it (we use Vitest instead). |
+| npm | bundled with Node | One package manager. No pnpm/yarn — easy packaging is the goal. |
+| TypeScript | ^5.5 | `verbatimModuleSyntax`, satisfies operator, and stable enough decorator behavior. |
+| Vite | ^5 | Multi-page input via `rollupOptions.input`. |
+| Vitest | ^1 | Reuses Vite's transform pipeline; same config for web and server tests. |
+| Fastify | ^4 | Small, fast, JSON-schema-native. |
+| Drizzle ORM | ^0.31 | Type-safe SQL, no decorators, code-first schema. |
+| `drizzle-kit` | ^0.22 | Migration generation. |
+| `@fastify/multipart` | ^8 | File upload handling. |
+| `ltijs` | ^5 | LTI 1.3 server. |
+| React | ^18 | Boring choice. |
+| `@radix-ui/react-*` | latest | A11y primitives only — no styling library. |
+| `fast-check` | ^3 | Property-based testing for the cue parser. |
+| `@testcontainers/postgresql` | ^10 | Real Postgres in integration tests. |
+| Playwright | ^1.45 | E2E. |
+| `pino` | ^9 | Logging. |
+| `zod` | ^3 | Env + request body validation. |
+
+Everything else (axios, lodash, moment) is **forbidden** in Phase 1. We have native `fetch`, native `Date`, and standard library array methods.
+
+---
+
+## 4. `package.json` — canonical version
+
+This is the canonical Phase 1 manifest. New dependencies require justification in a PR description.
+
+```json
+{
+  "name": "captionflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.0.0" },
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c blue,green \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "tsx watch src/server/index.ts",
+    "build": "npm run build:web && npm run build:server",
+    "build:web": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node dist/server/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "lint": "tsc --noEmit && eslint .",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9",
+    "@fastify/cors": "^9",
+    "@fastify/multipart": "^8",
+    "@fastify/static": "^7",
+    "drizzle-orm": "^0.31",
+    "fastify": "^4",
+    "ltijs": "^5",
+    "pg": "^8",
+    "pino": "^9",
+    "react": "^18",
+    "react-dom": "^18",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45",
+    "@radix-ui/react-dialog": "latest",
+    "@radix-ui/react-label": "latest",
+    "@testcontainers/postgresql": "^10",
+    "@types/node": "^20",
+    "@types/pg": "^8",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4",
+    "concurrently": "^8",
+    "drizzle-kit": "^0.22",
+    "eslint": "^9",
+    "fast-check": "^3",
+    "prettier": "^3",
+    "tsx": "^4",
+    "typescript": "^5.5",
+    "vite": "^5",
+    "vitest": "^1"
+  }
+}
+```
+
+The `dev` script runs Vite (with HMR) and the API (with `tsx watch`) in parallel. The Vite dev server proxies `/api/*` and `/lti/*` to the API. `npm run build` builds both into `dist/`. `npm start` runs the API, which serves the built static frontend via `@fastify/static`. **One process. One port in production.**
+
+---
+
+## 5. TypeScript configuration (three configs, one tree)
+
+**`tsconfig.json` (base — don't compile, just shared options):**
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "lib": ["ES2022"]
+  }
+}
+```
+
+**`tsconfig.server.json`:**
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist/server",
+    "rootDir": "src",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["src/server/**/*", "src/shared/**/*"]
+}
+```
+
+**`tsconfig.web.json`:**
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src/web/**/*", "src/shared/**/*"]
+}
+```
+
+**Why `noUncheckedIndexedAccess` is on:** the cue array uses index access (`cues[activeIndex]`) and we want the type system to surface "could be undefined." The cost is a few extra `if (cue)` guards; the benefit is one fewer class of runtime bug in the most timing-critical part of the system.
+
+---
+
+## 6. Vite configuration (multi-page, dev proxy)
+
+```ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { resolve } from 'node:path';
+
+export default defineConfig({
+  plugins: [react()],
+  root: 'src/web',
+  publicDir: resolve(__dirname, 'public'),
+  build: {
+    outDir: resolve(__dirname, 'dist/web'),
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        dashboard: resolve(__dirname, 'src/web/index.html'),
+        caption_surface: resolve(__dirname, 'src/web/caption-surface.html'),
+      },
+    },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': 'http://localhost:3000',
+      '/lti': 'http://localhost:3000',
+      '/.well-known': 'http://localhost:3000',
+    },
+  },
+  resolve: {
+    alias: {
+      '@shared': resolve(__dirname, 'src/shared'),
+    },
+  },
+});
+```
+
+The two HTML entries are what enables the "two SPAs, one bundle" strategy from §1 of the architectural sketch. The dashboard is at `/`; the caption surface is at `/caption-surface.html`. Both ship from the same Vite build into `dist/web/`, which `@fastify/static` serves.
+
+---
+
+## 7. Database — Drizzle schema, migrations, and access layer
+
+### 7.1 Schema (`src/server/db/schema.ts`)
+
+```ts
+import {
+  pgTable, uuid, text, timestamp, boolean, integer, index, uniqueIndex
+} from 'drizzle-orm/pg-core';
+
+export const institution = pgTable('institution', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  ltiIss: text('lti_iss').notNull(),
+  ltiClientId: text('lti_client_id').notNull(),
+  ltiDeploymentId: text('lti_deployment_id').notNull(),
+  licenseMaxViewsPerTerm: integer('license_max_views_per_term'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  uniqLti: uniqueIndex('institution_lti_unique').on(t.ltiIss, t.ltiClientId, t.ltiDeploymentId),
+}));
+
+export const instructor = pgTable('instructor', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  institutionId: uuid('institution_id').references(() => institution.id),
+  ltiSub: text('lti_sub'),
+  email: text('email').notNull(),
+  displayName: text('display_name'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  emailIdx: uniqueIndex('instructor_email_unique').on(t.email),
+  ltiIdx: index('instructor_lti').on(t.institutionId, t.ltiSub),
+}));
+
+export const caption = pgTable('caption', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  instructorId: uuid('instructor_id').notNull().references(() => instructor.id),
+  youtubeVideoId: text('youtube_video_id').notNull(),
+  format: text('format', { enum: ['srt', 'vtt'] }).notNull(),
+  languageCode: text('language_code').notNull(),
+  contentText: text('content_text').notNull(),
+  isMachineTranslated: boolean('is_machine_translated').default(false).notNull(),
+  sourceCaptionId: uuid('source_caption_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  instructorVideoIdx: index('caption_instructor_video').on(t.instructorId, t.youtubeVideoId),
+}));
+
+export const captionedResource = pgTable('captioned_resource', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  instructorId: uuid('instructor_id').notNull().references(() => instructor.id),
+  youtubeVideoId: text('youtube_video_id').notNull(),
+  defaultCaptionId: uuid('default_caption_id').references(() => caption.id),
+  ltiResourceLinkId: text('lti_resource_link_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  ltiIdx: uniqueIndex('captioned_resource_lti_unique').on(t.ltiResourceLinkId),
+}));
+```
+
+The Phase 2 tables (`viewEvent`, `captionGrant`) are not in Phase 1's migration set; they get added in their phase.
+
+### 7.2 Drizzle config (`drizzle.config.ts`)
+
+```ts
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './src/server/db/schema.ts',
+  out: './src/server/db/migrations',
+  dialect: 'postgresql',
+  dbCredentials: { url: process.env.DATABASE_URL! },
+  strict: true,
+  verbose: true,
+});
+```
+
+### 7.3 Migration discipline
+
+- `npm run db:generate` after every schema change. Generated SQL is committed to the repo. **Hand-edit migrations only when adding non-schema operations** (data backfills, index renames). Never edit a generated migration's auto-generated SQL.
+- `npm run db:migrate` runs at app start in production via the Railway pre-deploy hook (see §18).
+- For destructive changes (column removal, type changes), generate **two** migrations: one expand, one contract, deployed in two releases. This is overkill for Phase 1 with no real users, but it's the muscle memory we want from the start.
+
+### 7.4 Pool factory
+
+```ts
+// src/server/db/client.ts
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import * as schema from './schema.js';
+
+export type Db = ReturnType<typeof makeDb>;
+
+export function makeDb(connectionString: string) {
+  const pool = new Pool({ connectionString, max: 10 });
+  return drizzle(pool, { schema });
+}
+```
+
+A factory, not a singleton, so tests can construct a `Db` against a Testcontainers Postgres and inject it into the app builder.
+
+---
+
+## 8. Service layer — ISP-driven interfaces and implementations
+
+### 8.1 Interfaces (`src/server/services/`)
+
+Each file declares its small interface(s). One file per role.
+
+```ts
+// caption-store.ts
+import type { Cue } from '@shared/cues';
+
+export type CaptionFormat = 'srt' | 'vtt';
+
+export interface Caption {
+  id: string;
+  instructorId: string;
+  youtubeVideoId: string;
+  format: CaptionFormat;
+  languageCode: string;
+  contentText: string;
+  isMachineTranslated: boolean;
+  sourceCaptionId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NewCaption {
+  instructorId: string;
+  youtubeVideoId: string;
+  format: CaptionFormat;
+  languageCode: string;
+  contentText: string;
+}
+
+export interface CaptionReader {
+  getById(id: string): Promise<Caption | null>;
+  listByInstructor(instructorId: string): Promise<Caption[]>;
+}
+
+export interface CaptionWriter {
+  create(input: NewCaption): Promise<Caption>;
+  replaceContent(id: string, contentText: string, format: CaptionFormat): Promise<Caption>;
+  delete(id: string): Promise<void>;
+}
+```
+
+```ts
+// clock.ts — used by anything that records timestamps
+export interface Clock {
+  now(): Date;
+}
+```
+
+```ts
+// id-generator.ts
+export interface IdGenerator {
+  next(): string;
+}
+```
+
+```ts
+// magic-link-sender.ts
+export interface MagicLinkSender {
+  send(email: string, link: string): Promise<void>;
+}
+```
+
+### 8.2 Implementations (`src/server/repos/`, `src/server/adapters/`)
+
+```ts
+// repos/pg-caption-repo.ts
+import { eq } from 'drizzle-orm';
+import type { Db } from '../db/client.js';
+import { caption } from '../db/schema.js';
+import type {
+  CaptionReader, CaptionWriter, Caption, NewCaption, CaptionFormat
+} from '../services/caption-store.js';
+
+export class PgCaptionRepo implements CaptionReader, CaptionWriter {
+  constructor(private readonly db: Db) {}
+
+  async getById(id: string): Promise<Caption | null> {
+    const rows = await this.db.select().from(caption).where(eq(caption.id, id));
+    return rows[0] ?? null;
+  }
+
+  async listByInstructor(instructorId: string): Promise<Caption[]> {
+    return this.db.select().from(caption).where(eq(caption.instructorId, instructorId));
+  }
+
+  async create(input: NewCaption): Promise<Caption> {
+    const [row] = await this.db.insert(caption).values(input).returning();
+    if (!row) throw new Error('caption insert returned no rows');
+    return row;
+  }
+
+  async replaceContent(id: string, contentText: string, format: CaptionFormat): Promise<Caption> {
+    const [row] = await this.db.update(caption)
+      .set({ contentText, format, updatedAt: new Date() })
+      .where(eq(caption.id, id))
+      .returning();
+    if (!row) throw new Error(`caption ${id} not found`);
+    return row;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.delete(caption).where(eq(caption.id, id));
+  }
+}
+```
+
+```ts
+// adapters/system-clock.ts
+import type { Clock } from '../services/clock.js';
+export class SystemClock implements Clock {
+  now(): Date { return new Date(); }
+}
+```
+
+```ts
+// adapters/uuid-id-generator.ts
+import { randomUUID } from 'node:crypto';
+import type { IdGenerator } from '../services/id-generator.js';
+export class UuidIdGenerator implements IdGenerator {
+  next(): string { return randomUUID(); }
+}
+```
+
+```ts
+// adapters/resend-magic-link-sender.ts
+import type { MagicLinkSender } from '../services/magic-link-sender.js';
+export class ResendMagicLinkSender implements MagicLinkSender {
+  constructor(private readonly apiKey: string, private readonly fromEmail: string) {}
+  async send(email: string, link: string): Promise<void> {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: this.fromEmail, to: email,
+        subject: 'Sign in to CaptionFlow',
+        text: `Click to sign in: ${link}`,
+      }),
+    });
+    if (!res.ok) throw new Error(`resend ${res.status}`);
+  }
+}
+```
+
+### 8.3 Why this shape
+
+- Route handlers depend on `CaptionReader` or `CaptionWriter`, **not** `PgCaptionRepo`. The handler test passes an object literal with two methods.
+- Adding a new substrate (e.g., an in-memory repo for local development) is one new class, no consumer changes.
+- Phase 2 features that need `caption.search` add a `CaptionSearcher` interface; existing handlers don't grow a method they don't use.
+
+---
+
+## 9. Fastify backend — bootstrap, plugins, route layout
+
+### 9.1 The testable factory (`src/server/app.ts`)
+
+```ts
+import Fastify from 'fastify';
+import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
+import staticPlugin from '@fastify/static';
+import { resolve } from 'node:path';
+import type { Db } from './db/client.js';
+import type { Clock } from './services/clock.js';
+import type { IdGenerator } from './services/id-generator.js';
+import type { MagicLinkSender } from './services/magic-link-sender.js';
+import { PgCaptionRepo } from './repos/pg-caption-repo.js';
+import { registerCaptionRoutes } from './routes/captions.js';
+// ...etc
+
+export interface AppDeps {
+  db: Db;
+  clock: Clock;
+  ids: IdGenerator;
+  magicLinks: MagicLinkSender;
+  baseUrl: string;
+  sessionSecret: string;
+  staticDir: string | null; // null in tests
+}
+
+export function buildApp(deps: AppDeps) {
+  const app = Fastify({ logger: true });
+  app.register(cookie, { secret: deps.sessionSecret });
+  app.register(multipart, { limits: { fileSize: 1_048_576 } }); // 1 MB hard cap
+
+  const captions = new PgCaptionRepo(deps.db);
+  // ...etc
+
+  registerCaptionRoutes(app, { captions, clock: deps.clock, ids: deps.ids });
+  // ...etc
+
+  if (deps.staticDir) {
+    app.register(staticPlugin, { root: deps.staticDir, prefix: '/' });
+  }
+
+  return app;
+}
+```
+
+The factory is exported so tests build an app against test doubles and a real (Testcontainers) DB.
+
+### 9.2 The entry point (`src/server/index.ts`)
+
+```ts
+import { buildApp } from './app.js';
+import { makeDb } from './db/client.js';
+import { SystemClock } from './adapters/system-clock.js';
+import { UuidIdGenerator } from './adapters/uuid-id-generator.js';
+import { ResendMagicLinkSender } from './adapters/resend-magic-link-sender.js';
+import { loadConfig } from './config.js';
+import { resolve } from 'node:path';
+
+const cfg = loadConfig(process.env);
+const db = makeDb(cfg.databaseUrl);
+
+const app = buildApp({
+  db,
+  clock: new SystemClock(),
+  ids: new UuidIdGenerator(),
+  magicLinks: new ResendMagicLinkSender(cfg.resendApiKey, cfg.fromEmail),
+  baseUrl: cfg.baseUrl,
+  sessionSecret: cfg.sessionSecret,
+  staticDir: resolve(process.cwd(), 'dist/web'),
+});
+
+app.listen({ host: '0.0.0.0', port: cfg.port })
+  .then(() => app.log.info(`listening on ${cfg.port}`))
+  .catch((err) => { app.log.error(err); process.exit(1); });
+```
+
+### 9.3 Config (`src/server/config.ts`)
+
+```ts
+import { z } from 'zod';
+const Schema = z.object({
+  PORT: z.coerce.number().default(3000),
+  DATABASE_URL: z.string().url(),
+  BASE_URL: z.string().url(),
+  SESSION_SECRET: z.string().min(32),
+  RESEND_API_KEY: z.string(),
+  FROM_EMAIL: z.string().email(),
+  LTI_PLATFORM_URL: z.string().url().optional(),
+  LTI_CLIENT_ID: z.string().optional(),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+});
+
+export type Config = ReturnType<typeof loadConfig>;
+
+export function loadConfig(env: NodeJS.ProcessEnv) {
+  const parsed = Schema.parse(env);
+  return {
+    port: parsed.PORT,
+    databaseUrl: parsed.DATABASE_URL,
+    baseUrl: parsed.BASE_URL,
+    sessionSecret: parsed.SESSION_SECRET,
+    resendApiKey: parsed.RESEND_API_KEY,
+    fromEmail: parsed.FROM_EMAIL,
+    lti: parsed.LTI_PLATFORM_URL ? {
+      platformUrl: parsed.LTI_PLATFORM_URL,
+      clientId: parsed.LTI_CLIENT_ID!,
+    } : null,
+    isProd: parsed.NODE_ENV === 'production',
+  };
+}
+```
+
+### 9.4 Route registration pattern
+
+Each route file exports `registerXRoutes(app, deps)` with `deps` typed to the **smallest interfaces it needs**. This is ISP at the route layer.
+
+```ts
+// src/server/routes/captions.ts
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { CaptionReader, CaptionWriter } from '../services/caption-store.js';
+import type { Clock } from '../services/clock.js';
+import { parseCaption } from '@shared/cues.js';
+
+interface Deps {
+  captions: CaptionReader & CaptionWriter;
+  clock: Clock;
+  ids: IdGenerator;
+}
+
+export function registerCaptionRoutes(app: FastifyInstance, deps: Deps) {
+  app.get('/api/captions', async (req, reply) => {
+    const instructorId = await requireInstructor(req); // see auth.ts
+    return deps.captions.listByInstructor(instructorId);
+  });
+
+  app.post('/api/captions', async (req, reply) => {
+    const instructorId = await requireInstructor(req);
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: 'file required' });
+
+    const text = (await file.toBuffer()).toString('utf-8');
+    const fields = file.fields as Record<string, { value: string }>;
+    const youtubeVideoId = fields.youtube_video_id?.value;
+    const languageCode = fields.language_code?.value ?? 'en';
+    const format = file.filename.endsWith('.srt') ? 'srt' : 'vtt';
+
+    const parsed = parseCaption(text, format);
+    if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
+    if (!youtubeVideoId) return reply.code(400).send({ error: 'youtube_video_id required' });
+
+    return deps.captions.create({
+      instructorId, youtubeVideoId, format, languageCode, contentText: text,
+    });
+  });
+
+  // ...replace, delete, getById
+}
+```
+
+The handler accepts `CaptionReader & CaptionWriter` — in production this is a single `PgCaptionRepo`, in tests it's an object literal.
+
+---
+
+## 10. The cue parser — full TDD walkthrough
+
+The parser lives in `src/shared/srt.ts` and `src/shared/vtt.ts`, with a unifying `parseCaption` in `src/shared/cues.ts`.
+
+### 10.1 Types
+
+```ts
+// src/shared/cues.ts
+import type { Result } from './result.js';
+export interface Cue {
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+export type CaptionFormat = 'srt' | 'vtt';
+export function parseCaption(text: string, format: CaptionFormat): Result<Cue[], string> { ... }
+```
+
+```ts
+// src/shared/result.ts
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+export const ok  = <T>(value: T): Result<T, never> => ({ ok: true, value });
+export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+```
+
+### 10.2 Red — the first failing test
+
+```ts
+// src/shared/srt.test.ts
+import { describe, expect, it } from 'vitest';
+import { parseSrt } from './srt.js';
+
+describe('parseSrt', () => {
+  it('parses a single cue', () => {
+    const input = `1
+00:00:01,000 --> 00:00:02,500
+Hello, world.
+`;
+    const result = parseSrt(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual([
+      { startSec: 1.0, endSec: 2.5, text: 'Hello, world.' },
+    ]);
+  });
+});
+```
+
+Run `npm test`. Red.
+
+### 10.3 Green — minimum implementation
+
+```ts
+// src/shared/srt.ts
+import { ok, err, type Result } from './result.js';
+import type { Cue } from './cues.js';
+
+export function parseSrt(input: string): Result<Cue[], string> {
+  const lines = input.replace(/\r\n/g, '\n').split('\n');
+  const cues: Cue[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i]?.trim() === '') { i++; continue; }
+    i++; // skip index
+    const timing = lines[i++];
+    if (!timing) return err('missing timing');
+    const m = timing.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+    if (!m) return err(`bad timing: ${timing}`);
+    const toSec = (h: string, mn: string, s: string, ms: string) =>
+      Number(h) * 3600 + Number(mn) * 60 + Number(s) + Number(ms) / 1000;
+    const startSec = toSec(m[1]!, m[2]!, m[3]!, m[4]!);
+    const endSec   = toSec(m[5]!, m[6]!, m[7]!, m[8]!);
+    const textLines: string[] = [];
+    while (i < lines.length && lines[i]?.trim() !== '') textLines.push(lines[i++]!);
+    cues.push({ startSec, endSec, text: textLines.join('\n') });
+  }
+  return ok(cues);
+}
+```
+
+Test passes. Green.
+
+### 10.4 Drive the rest with one test at a time
+
+The next tests (write each in turn, watch fail, write minimum, watch pass):
+
+1. Multiple cues separated by blank lines.
+2. CRLF line endings (`\r\n`).
+3. Multi-line cue text.
+4. UTF-8 BOM at start of file (strip it).
+5. Cue index lines that aren't sequential (some authoring tools).
+6. Returns `err` on malformed timing.
+7. Returns `err` if `endSec < startSec`.
+8. Cues must be returned sorted by `startSec`. (Important for the binary search in §11.)
+
+### 10.5 Property-based tests with `fast-check`
+
+```ts
+import fc from 'fast-check';
+import { describe, expect, it } from 'vitest';
+import { parseSrt } from './srt.js';
+import { renderSrt } from './srt-render.js'; // a test-only helper
+
+describe('parseSrt — properties', () => {
+  it('parse(render(cues)) === cues for any well-formed input', () => {
+    fc.assert(fc.property(
+      fc.array(arbCue(), { minLength: 1, maxLength: 50 }).map(sortAndDedup),
+      (cues) => {
+        const text = renderSrt(cues);
+        const parsed = parseSrt(text);
+        expect(parsed.ok).toBe(true);
+        if (!parsed.ok) return;
+        expect(parsed.value).toEqual(cues);
+      }
+    ));
+  });
+});
+
+const arbCue = () => fc.tuple(
+  fc.float({ min: 0, max: 7200, noNaN: true }),
+  fc.float({ min: 0.001, max: 60, noNaN: true }),
+  fc.string({ minLength: 1 }).filter((s) => !s.includes('\n\n')),
+).map(([start, dur, text]) => ({ startSec: start, endSec: start + dur, text }));
+```
+
+`fast-check` will hammer the parser with thousands of generated inputs and shrink any failing case to a minimal example. **This is the test that finds the bugs you didn't think of.**
+
+### 10.6 VTT parser
+
+`vtt.ts` follows the same structure with three differences: timing uses `.` instead of `,` for milliseconds, the file starts with a `WEBVTT` header (skip it), and cue text supports inline tags (`<v Speaker>...</v>`) which we strip. Drive each difference with a failing test.
+
+---
+
+## 11. The sync engine — full TDD walkthrough
+
+This is the highest-risk component. We will build it test-first against fakes for both the player and the clock so the entire algorithm is deterministic and runs in a Node test process.
+
+### 11.1 Interfaces (ISP, again)
+
+```ts
+// src/web/caption-surface/youtube-player.ts
+export type PlayerState = 'idle' | 'playing' | 'paused' | 'buffering' | 'ended';
+
+export interface YouTubePlayer {
+  getCurrentTime(): number;          // seconds, fractional
+  getState(): PlayerState;
+  onStateChange(cb: (s: PlayerState) => void): () => void; // returns unsubscribe
+}
+
+export interface RafScheduler {
+  schedule(cb: (timestampMs: number) => void): number; // returns handle
+  cancel(handle: number): void;
+}
+```
+
+The real `YouTubePlayer` impl wraps `YT.Player`. The real `RafScheduler` calls `requestAnimationFrame`. Both have test doubles below.
+
+### 11.2 The engine API
+
+```ts
+// src/web/caption-surface/sync-engine.ts
+import type { Cue } from '@shared/cues.js';
+import type { YouTubePlayer, RafScheduler } from './youtube-player.js';
+
+export interface SyncEngineDeps {
+  player: YouTubePlayer;
+  raf: RafScheduler;
+  cues: readonly Cue[]; // assumed sorted by startSec
+  onActiveCueChange: (cueIndex: number | null) => void;
+}
+
+export interface SyncEngine {
+  start(): void;
+  stop(): void;
+}
+
+export function makeSyncEngine(deps: SyncEngineDeps): SyncEngine { ... }
+```
+
+### 11.3 Red — the first failing test
+
+```ts
+// src/web/caption-surface/sync-engine.test.ts
+import { describe, it, expect, beforeEach } from 'vitest';
+import { makeSyncEngine } from './sync-engine.js';
+import { FakePlayer, FakeRaf } from './test-doubles.js';
+
+describe('SyncEngine', () => {
+  let player: FakePlayer;
+  let raf: FakeRaf;
+  let active: (number | null)[];
+
+  beforeEach(() => {
+    player = new FakePlayer();
+    raf = new FakeRaf();
+    active = [];
+  });
+
+  it('emits the active cue index when playback advances into a cue', () => {
+    const cues = [
+      { startSec: 0,   endSec: 1, text: 'A' },
+      { startSec: 1.5, endSec: 3, text: 'B' },
+    ];
+    const engine = makeSyncEngine({
+      player, raf, cues, onActiveCueChange: (i) => active.push(i),
+    });
+    engine.start();
+    player.setState('playing');
+    player.setTime(0.5); raf.tick();
+    player.setTime(1.7); raf.tick();
+    expect(active).toEqual([0, 1]);
+  });
+});
+```
+
+### 11.4 Test doubles
+
+```ts
+// src/web/caption-surface/test-doubles.ts
+import type { PlayerState, YouTubePlayer, RafScheduler } from './youtube-player.js';
+
+export class FakePlayer implements YouTubePlayer {
+  private t = 0;
+  private s: PlayerState = 'idle';
+  private subs = new Set<(s: PlayerState) => void>();
+  getCurrentTime() { return this.t; }
+  getState() { return this.s; }
+  onStateChange(cb: (s: PlayerState) => void) { this.subs.add(cb); return () => this.subs.delete(cb); }
+  setTime(t: number) { this.t = t; }
+  setState(s: PlayerState) { this.s = s; this.subs.forEach((cb) => cb(s)); }
+}
+
+export class FakeRaf implements RafScheduler {
+  private next = 1;
+  private pending = new Map<number, (ts: number) => void>();
+  private now = 0;
+  schedule(cb: (ts: number) => void) { const h = this.next++; this.pending.set(h, cb); return h; }
+  cancel(h: number) { this.pending.delete(h); }
+  tick(deltaMs = 16) {
+    this.now += deltaMs;
+    const cbs = [...this.pending.values()]; this.pending.clear();
+    cbs.forEach((cb) => cb(this.now));
+  }
+}
+```
+
+The entire sync engine is now testable in milliseconds, deterministically, in Node.
+
+### 11.5 Green — the implementation
+
+```ts
+// src/web/caption-surface/sync-engine.ts
+export function makeSyncEngine(deps: SyncEngineDeps): SyncEngine {
+  const { player, raf, cues, onActiveCueChange } = deps;
+  let activeIndex: number | null = null;
+  let rafHandle: number | null = null;
+  let unsub: (() => void) | null = null;
+  let stableFramesSinceBuffering = Infinity; // see §11.7
+
+  const findCueIndex = (t: number): number | null => {
+    let lo = 0, hi = cues.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const c = cues[mid]!;
+      if (t < c.startSec) hi = mid - 1;
+      else if (t >= c.endSec) lo = mid + 1;
+      else return mid;
+    }
+    return null;
+  };
+
+  const tick = () => {
+    if (player.getState() !== 'playing') { rafHandle = null; return; }
+    if (stableFramesSinceBuffering < 2) {
+      stableFramesSinceBuffering++;
+      rafHandle = raf.schedule(tick);
+      return;
+    }
+    const idx = findCueIndex(player.getCurrentTime());
+    if (idx !== activeIndex) { activeIndex = idx; onActiveCueChange(idx); }
+    rafHandle = raf.schedule(tick);
+  };
+
+  const onState = (s: PlayerState) => {
+    if (s === 'playing') {
+      stableFramesSinceBuffering = 0;
+      if (rafHandle === null) rafHandle = raf.schedule(tick);
+    } else if (s === 'buffering') {
+      stableFramesSinceBuffering = 0;
+    } else {
+      // paused / ended / idle: resolve once at the current time, then stop the loop
+      const idx = findCueIndex(player.getCurrentTime());
+      if (idx !== activeIndex) { activeIndex = idx; onActiveCueChange(idx); }
+      if (rafHandle !== null) { raf.cancel(rafHandle); rafHandle = null; }
+    }
+  };
+
+  return {
+    start() {
+      unsub = player.onStateChange(onState);
+      onState(player.getState());
+    },
+    stop() {
+      unsub?.();
+      if (rafHandle !== null) raf.cancel(rafHandle);
+      rafHandle = null;
+    },
+  };
+}
+```
+
+### 11.6 The next tests, in order
+
+1. Pause holds the active cue (FR-7).
+2. Seek-while-playing jumps to the new cue.
+3. Seek-while-paused: on the next play, the engine resolves to the post-seek cue.
+4. Stale-time guard: if the player reports the same time across two ticks immediately after `BUFFERING → PLAYING`, the engine waits two frames before trusting it (this is the guard at §11.7 below).
+5. `null` is emitted when current time falls in a gap between cues.
+6. `stop()` removes the rAF callback and the state subscription (verify by ticking after stop and asserting no calls).
+
+### 11.7 The post-buffering stall
+
+YouTube's IFrame API briefly returns stale `getCurrentTime()` values immediately after `BUFFERING → PLAYING`. The `stableFramesSinceBuffering` counter waits two frames (≈32 ms) before re-resolving the cue. Without this, the cue display flickers on every seek. **This was discovered the hard way; do not refactor it out.**
+
+### 11.8 The recorded-session E2E test
+
+In `tests/e2e/caption-surface.spec.ts`, Playwright loads the caption surface against a known YouTube video with a known caption file. It plays for 30 seconds, pauses, seeks to 10s, plays again, and asserts the displayed cue text at six known timestamps. The video is pinned to a specific `videoId` we control or that we have legal embed rights to.
+
+---
+
+## 12. Frontend structure — the dashboard and the caption surface
+
+### 12.1 Routing
+
+Two HTML entries. Inside each, **no client-side router in Phase 1.**
+
+- `/` → dashboard. The dashboard uses native `<a href>` for navigation between its few screens, with a server-rendered redirect if the user is not authenticated. Or, if you prefer a single HTML file that does its own view switching, a tiny hash-based router suffices — *do not* install React Router for four screens.
+- `/caption-surface.html?resource=:id` → caption surface. One screen, query param drives the resource.
+
+### 12.2 API client
+
+A single `api-client.ts` module with one function per endpoint, returning typed results. No fetch wrappers, no Axios.
+
+```ts
+// src/web/dashboard/api-client.ts
+export async function listCaptions(): Promise<Caption[]> {
+  const res = await fetch('/api/captions', { credentials: 'include' });
+  if (!res.ok) throw new Error(`captions list ${res.status}`);
+  return res.json();
+}
+```
+
+### 12.3 State
+
+`useState` and `useReducer` only. **No Redux, no Zustand, no React Query in Phase 1.** Re-fetch on mount and after mutations. The data set is small enough that this is correct.
+
+### 12.4 The caption surface mount
+
+```tsx
+// src/web/caption-surface/main.tsx
+import { createRoot } from 'react-dom/client';
+import { CaptionSurface } from './CaptionSurface.js';
+
+const params = new URLSearchParams(window.location.search);
+const resourceId = params.get('resource');
+if (!resourceId) document.body.textContent = 'Missing resource';
+else createRoot(document.getElementById('root')!).render(
+  <CaptionSurface resourceId={resourceId} />
+);
+```
+
+`CaptionSurface` fetches the resource, fetches the caption cues, instantiates a real `YouTubePlayer` and `RafScheduler`, hands them to `makeSyncEngine`, and renders `<CueDisplay>` driven by an `onActiveCueChange` callback that calls `setActiveIndex`.
+
+---
+
+## 13. Vanilla CSS — file layout, tokens, conventions
+
+### 13.1 File layout
+
+```
+src/web/styles/
+├── reset.css           # modern reset (Andy Bell, ~30 lines)
+├── tokens.css          # custom properties: colors, type scale, spacing
+├── base.css            # element-level (body, h1..h6, a, input, button)
+├── components.css      # reusable classes (.button, .field, .file-drop)
+├── dashboard.css       # dashboard-specific
+└── caption-surface.css # caption-surface-specific
+```
+
+`index.html` imports `reset.css → tokens.css → base.css → components.css → dashboard.css`. `caption-surface.html` imports `reset.css → tokens.css → base.css → components.css → caption-surface.css`. Vite bundles each entry's CSS into one file at build time.
+
+### 13.2 Tokens (`tokens.css`)
+
+```css
+:root {
+  --color-bg: #ffffff;
+  --color-fg: #1a1a1a;
+  --color-muted: #6b6b6b;
+  --color-accent: #1d4ed8;
+  --color-error: #b91c1c;
+  --color-caption-bg: rgba(0, 0, 0, 0.78);
+  --color-caption-fg: #ffffff;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-caption: ui-sans-serif, system-ui, sans-serif;
+  --font-size-caption: clamp(18px, 2.5vw, 28px);
+
+  --radius: 6px;
+  --line-height-caption: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0e0e0e;
+    --color-fg: #f5f5f5;
+    --color-muted: #a3a3a3;
+  }
+}
+```
+
+### 13.3 Naming convention
+
+**BEM-lite** without the methodology zeal:
+
+- A component is a class named after the component: `.cue-display`, `.file-drop`, `.button`.
+- Sub-elements use double-underscore: `.cue-display__text`, `.file-drop__hint`.
+- States use `is-` or `has-` prefixes on the same element: `.button.is-loading`, `.file-drop.has-error`.
+
+No CSS-in-JS, no Tailwind, no atomic libraries. The two CSS files for the two entry points stay under 1000 lines combined; a competent engineer can read them in fifteen minutes.
+
+### 13.4 Caption surface CSS — the part that matters
+
+```css
+.cue-display {
+  position: relative;
+  min-height: calc(var(--font-size-caption) * var(--line-height-caption) * 2);
+  background: var(--color-caption-bg);
+  color: var(--color-caption-fg);
+  font-family: var(--font-caption);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+}
+
+.cue-display__text {
+  white-space: pre-line;
+}
+
+.cue-display:empty::before {
+  content: '\00a0'; /* preserve height between cues so the page does not jump */
+}
+```
+
+The `min-height` and the empty-state `::before` together prevent the layout from shifting between cues — important for the "captions underneath the YouTube embed" layout (FR-5) so the page doesn't twitch.
+
+---
+
+## 14. LTI 1.3 integration via `ltijs`
+
+### 14.1 Setup
+
+```ts
+// src/server/lti/ltijs-setup.ts
+import { Provider } from 'ltijs';
+
+export async function setupLti(opts: {
+  databaseUrl: string;
+  encryptionKey: string;
+  appUrl: string;
+}) {
+  const lti = new Provider(opts.encryptionKey, {
+    plugin: 'database',
+    url: opts.databaseUrl,
+  });
+  lti.appRoute('/lti/launch');
+  lti.loginRoute('/lti/login');
+  lti.keysetRoute('/.well-known/jwks');
+  lti.onConnect(async (token, req, res) => {
+    // map token → instructor, then redirect to the captioned resource surface
+    const resourceLinkId = token.platformContext.resource.id;
+    res.redirect(`/caption-surface.html?resource=${resourceLinkId}`);
+  });
+  await lti.deploy({ serverless: true }); // mounted into Fastify
+  return lti;
+}
+```
+
+`ltijs` exposes an Express-style middleware. We mount it via `@fastify/express` for Phase 1; if the surface area grows, we revisit. (Yes, that's the one place we add a Fastify plugin specifically to host Express middleware. The alternative is implementing the LTI 1.3 OIDC dance ourselves, which costs weeks.)
+
+### 14.2 Platform registration
+
+The platform registration step (Canvas, Blackboard, etc.) is documented at `ltijs`'s site. Each platform requires:
+- The tool's launch URL (`{baseUrl}/lti/launch`)
+- The tool's login URL (`{baseUrl}/lti/login`)
+- The tool's JWKS URL (`{baseUrl}/.well-known/jwks`)
+- The tool's `client_id` (we generate; the platform stores)
+- The platform's `iss`, `auth_endpoint`, and `keyset_url` (the platform provides; we store in `institution`)
+
+### 14.3 Identity mapping
+
+On a successful launch, we look up `institution` by `(lti_iss, lti_client_id, lti_deployment_id)`. If not found, we create it (auto-provisioning). We then look up `instructor` by `(institution_id, lti_sub)`; if not found, create. The instructor record's email is taken from the launch claims.
+
+---
+
+## 15. Magic-link authentication (the backstop path)
+
+For instructors who want to use CaptionFlow before their institution is wired into LTI.
+
+- `POST /auth/magic-link { email }` — generate a single-use token (random 32 bytes, base64url), store its hash + email + expiry (15 min) in a `magic_link` table, send via `MagicLinkSender`.
+- `GET /auth/callback?token=...` — look up by hashed token, mark used, set a signed `instructor_session` cookie (HTTP-only, Secure, SameSite=Lax), redirect to `/`.
+
+Sessions last 30 days, sliding. Logout clears the cookie.
+
+There's no password reset because there's no password. This is the entire reason we picked magic-link.
+
+---
+
+## 16. Testing strategy — every layer, every tool
+
+| Layer | Tool | Where | What it covers |
+|---|---|---|---|
+| Unit (pure) | Vitest | `*.test.ts` next to source | Cue parsers, sync engine, YouTube ID parsing, config parsing. |
+| Property-based | Vitest + fast-check | next to source | Round-trip parse/render, sort invariants. |
+| Integration (DB) | Vitest + Testcontainers | `tests/integration/` | Repos against real Postgres, migrations apply cleanly. |
+| Integration (HTTP) | Vitest + Fastify `inject` | `tests/integration/` | Routes against real DB, with fake `MagicLinkSender` and fake `Clock`. |
+| E2E | Playwright | `tests/e2e/` | Caption surface against real YouTube embed; instructor upload flow. |
+| A11y | `axe-core` + Playwright | inside E2E | Run `axe` on every Playwright page; fail on any new violation. |
+| LTI cert | LMS vendor suites | manual | Canvas → Blackboard → Moodle → D2L, in that order. |
+
+### 16.1 Vitest config
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+export default defineConfig({
+  test: {
+    globals: false,
+    environment: 'node',          // DOM tests opt in per file
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    exclude: ['tests/integration/**', 'tests/e2e/**'],
+    coverage: { provider: 'v8', reporter: ['text', 'lcov'] },
+  },
+});
+```
+
+```ts
+// vitest.integration.config.ts
+import { defineConfig } from 'vitest/config';
+export default defineConfig({
+  test: {
+    include: ['tests/integration/**/*.test.ts'],
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
+    pool: 'forks',                // Testcontainers + workers can deadlock without forks
+  },
+});
+```
+
+### 16.2 Integration test pattern
+
+```ts
+// tests/integration/pg-caption-repo.test.ts
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { makeDb } from '../../src/server/db/client.js';
+import { PgCaptionRepo } from '../../src/server/repos/pg-caption-repo.js';
+
+let pg: StartedPostgreSqlContainer;
+let repo: PgCaptionRepo;
+
+beforeAll(async () => {
+  pg = await new PostgreSqlContainer('postgres:16-alpine').start();
+  const db = makeDb(pg.getConnectionUri());
+  await migrate(db, { migrationsFolder: 'src/server/db/migrations' });
+  repo = new PgCaptionRepo(db);
+}, 60_000);
+
+afterAll(async () => { await pg.stop(); });
+
+describe('PgCaptionRepo', () => {
+  it('round-trips a caption', async () => {
+    const created = await repo.create({
+      instructorId: 'a-real-uuid-here',
+      youtubeVideoId: 'dQw4w9WgXcQ',
+      format: 'srt',
+      languageCode: 'en',
+      contentText: '1\n00:00:01,000 --> 00:00:02,000\nhi\n',
+    });
+    const fetched = await repo.getById(created.id);
+    expect(fetched).toEqual(created);
+  });
+});
+```
+
+### 16.3 What we deliberately don't test
+
+- We do not unit-test the `PgCaptionRepo` against a mock DB. Repos run against real Postgres or they don't run.
+- We do not E2E-test the LTI flow against real Canvas in CI; we use `ltijs`'s own platform stubs.
+- We do not test that React renders. We test the inputs to React (the cue index from the engine, the parsed cues from the parser).
+
+---
+
+## 17. CI — GitHub Actions
+
+```yaml
+# .github/workflows/ci.yml
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: pw }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:integration
+        env:
+          DATABASE_URL: postgresql://postgres:pw@localhost:5432/postgres
+      - run: npx playwright install --with-deps
+      - run: npm run build
+      - run: npm run test:e2e
+```
+
+CI runs on every PR. **Merge is blocked unless every step passes.** No exceptions.
+
+---
+
+## 18. Railway deployment
+
+### 18.1 `railway.toml`
+
+```toml
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+```
+
+### 18.2 `nixpacks.toml`
+
+```toml
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build", "npm run db:migrate"]
+
+[start]
+cmd = "npm start"
+```
+
+The `db:migrate` in the build phase runs against `DATABASE_URL` provided by Railway's Postgres add-on. Migrations apply before the new app version starts serving traffic.
+
+### 18.3 Required environment variables
+
+| Variable | Source | Notes |
+|---|---|---|
+| `DATABASE_URL` | Railway Postgres plugin | Auto-injected. |
+| `BASE_URL` | Manual | e.g. `https://captionflow.app`. Used for magic-link callbacks and LTI URLs. |
+| `SESSION_SECRET` | Manual | 32+ random bytes. Rotate annually. |
+| `RESEND_API_KEY` | Manual | Resend.com magic-link sending. |
+| `FROM_EMAIL` | Manual | Verified sender on Resend. |
+| `LTI_PLATFORM_URL` | Per-platform | Set per institution; not strictly needed at boot. |
+| `LTI_CLIENT_ID` | Per-platform | Same as above. |
+| `NODE_ENV` | Auto | `production` on Railway. |
+
+### 18.4 Domains and TLS
+
+Railway provides `*.up.railway.app` with TLS by default. For production, attach a custom domain and let Railway provision the cert. **Do not deploy without a real domain** — LTI 1.3 platforms reject most ephemeral domains during registration.
+
+### 18.5 Cost expectations
+
+- App service: ~$5–$20/month at idle; usage-based above.
+- Postgres: ~$10/month for the smallest tier; sufficient for tens of thousands of caption rows.
+- Total Phase 1: well under $50/month.
+
+---
+
+## 19. Local development workflow
+
+### 19.1 `docker-compose.yml`
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: captionflow
+      POSTGRES_PASSWORD: captionflow
+      POSTGRES_DB: captionflow
+    ports: ["5432:5432"]
+    volumes: ["./.pgdata:/var/lib/postgresql/data"]
+```
+
+### 19.2 First-time setup
+
+```bash
+git clone <repo>
+cd CaptionFlow
+cp .env.example .env       # fill in RESEND_API_KEY, etc.
+docker compose up -d
+npm ci
+npm run db:migrate
+npm run dev                # runs web (5173) and api (3000) concurrently
+```
+
+Open `http://localhost:5173` for the dashboard, `http://localhost:5173/caption-surface.html?resource=...` for the surface.
+
+### 19.3 Daily loop
+
+- `npm run test:watch` in one terminal.
+- `npm run dev` in another.
+- Drizzle Studio (`npm run db:studio`) on demand for poking at the DB.
+
+---
+
+## 20. Phased delivery, paced by TDD
+
+Each item below is "write the failing test, then make it pass." Order is load-bearing.
+
+### Week 0 — Phase 0 spike (still mandatory)
+
+1. Hard-code one VTT file and one YouTube `videoId` in a standalone HTML page.
+2. TDD the **cue parser** (§10) until §10.6's eight tests pass.
+3. TDD the **sync engine** (§11) until §11.6's six tests pass.
+4. Wire the spike page: real YT IFrame Player + real rAF + the engine.
+5. **Drift measurement.** Manual session: play, pause, seek-while-playing, seek-while-paused, mobile Safari, backgrounded tab. Record results. Decision gate.
+
+### Phase 1 — MVP (weeks 1–6)
+
+Order:
+
+1. Repo skeleton (§2), TS configs (§5), `package.json` (§4), CI (§17). *Do this in one PR.*
+2. Drizzle schema (§7.1) + first migration. Test: `npm run db:migrate` runs cleanly against Testcontainers.
+3. `PgCaptionRepo` (§8.2), red-green-refactored against Testcontainers (§16.2).
+4. `buildApp` factory (§9.1) + `/health`. Smoke test with Fastify `inject`.
+5. `POST /api/captions`, `GET /api/captions/:id`, `DELETE /api/captions/:id`. Tests for each before implementation.
+6. Magic-link auth (§15). Tests use a fake `MagicLinkSender` and a fake `Clock`.
+7. Dashboard skeleton: login screen, captions list, upload form (§12).
+8. Caption surface: integrate parser + engine + IFrame Player (§12.4, §11).
+9. LTI 1.3 wiring (§14). Integration test against `ltijs`'s platform stub.
+10. Deploy to Railway (§18). Real domain, real TLS, real magic-link delivery.
+11. First real instructor uploads first real caption. **Phase 1 exit criterion.**
+
+### Phase 1.5 — compliance (weeks 7–9)
+
+External WCAG audit, Canvas LTI certification, pen test. No new features.
+
+### Phase 2 — library + metering (later)
+
+Schema additions (`view_event`, `caption_grant`), API additions, dashboard for institutional admins.
+
+### Phase 3 — translation tracks + full-screen (later)
+
+Translation worker, full-screen surface.
+
+---
+
+## 21. Code conventions
+
+- **Imports.** `import type` for type-only imports (`verbatimModuleSyntax` enforces it).
+- **Filenames.** `kebab-case.ts`. Components: `PascalCase.tsx`.
+- **Exports.** Named exports only. **No default exports** anywhere except the `vite.config.ts` and `drizzle.config.ts` cases where the tool requires it.
+- **Errors.** Domain errors return a `Result<T, E>`. Infrastructure errors (DB unreachable, network down) throw. Route handlers convert thrown errors to 5xx via a Fastify `setErrorHandler`.
+- **Async.** No `async` function ever returns `void` unless intentional (use `Promise<void>` explicitly).
+- **Comments.** Only for non-obvious intent. The §11.7 stale-time guard is a textbook example of a comment worth writing.
+
+---
+
+## 22. Operations — logging, errors, health
+
+- **Logging.** Pino at the Fastify level. Request logs include `req.id` (auto), instructor id (if known), and route. Caption uploads log size and parsed cue count. **Never log caption content** — it is user data.
+- **Errors.** Unhandled promise rejections crash the process (Node 20 default). Railway restarts. Better than soldiering on with corrupted state.
+- **Health.** `/health` returns `200 OK` with `{ status: 'ok', db: 'ok' }` if a `SELECT 1` against Postgres succeeds in <1s. Used by Railway's healthcheck.
+- **Metrics.** Phase 1: nothing. Phase 2 adds a Prometheus endpoint when usage metering is on the line.
+
+---
+
+## 23. Security checklist
+
+- [ ] HTTPS only. `BASE_URL` must be `https://`. Reject startup otherwise.
+- [ ] HTTP-only, Secure, SameSite=Lax cookies for sessions.
+- [ ] CSRF protection on state-changing routes (magic-link callback uses a one-time token, which doubles as CSRF; LTI launches use platform-signed JWTs).
+- [ ] `Content-Security-Policy: frame-ancestors 'self' https://*.canvaslms.com https://*.blackboard.com ...` so the caption surface can only be embedded by approved LMSes.
+- [ ] Caption uploads capped at 1 MB by `@fastify/multipart`.
+- [ ] All DB queries go through Drizzle's parameterized API. **Never** string-interpolate user input into SQL. Drizzle makes the wrong thing harder than the right thing here.
+- [ ] `zod` validation on every request body and query string.
+- [ ] Magic-link tokens stored hashed (SHA-256), single-use, 15-minute TTL.
+- [ ] `helmet`-equivalent headers via `@fastify/helmet` once we add it (Phase 1.5).
+- [ ] No secrets in the repo. `.env` is gitignored. `.env.example` is a template only.
+- [ ] Dependency updates: `npm audit` in CI; weekly Dependabot PRs reviewed.
+
+---
+
+## 24. Decisions intentionally deferred
+
+These are decisions the implementing engineer is empowered to make at the moment they become real. Listing them here so they don't surprise anyone.
+
+- The exact ESLint config (recommend `@typescript-eslint` + `react-hooks` + `jsx-a11y`).
+- The exact Prettier config (defaults are fine; commit a `.prettierrc` with `singleQuote: true` and `trailingComma: 'all'` to settle the inevitable bikeshed).
+- The CSS reset — Andy Bell's modern reset is the recommendation, but any minimalist reset is fine.
+- The favicon and brand colors. Ricky and Jason will weigh in.
+- Whether the dashboard uses a hash router or full-page navigation. Full-page is simpler; pick that until it hurts.
+- The exact set of LMSes targeted for certification, in what order. Recommendation: Canvas first.
+
+---
+
+## Appendix A — `.env.example`
+
+```
+PORT=3000
+DATABASE_URL=postgresql://captionflow:captionflow@localhost:5432/captionflow
+BASE_URL=http://localhost:5173
+SESSION_SECRET=change-me-to-32-or-more-random-characters
+RESEND_API_KEY=re_your_key_here
+FROM_EMAIL=hello@captionflow.example
+NODE_ENV=development
+```
+
+## Appendix B — `.gitignore`
+
+```
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.pgdata/
+playwright-report/
+test-results/
+coverage/
+```
+
+## Appendix C — README outline (to be written in Phase 1, week 1)
+
+1. What CaptionFlow is (one paragraph; lift from `requirements.txt` §1).
+2. Stack at a glance.
+3. Local development (lift from §19).
+4. Running the tests.
+5. Deploying (lift from §18).
+6. Where to read next: `requirements.txt`, then this document.
+
+---
+
+*End of plan. If a section feels like padding, it is — flag it and I'll cut it. If a section feels missing, name it and I'll add it. The goal is "no surprises in week three," not "everything in chapter form."*

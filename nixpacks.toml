@@ -1,0 +1,14 @@
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+# Migrations run at process start via `runMigrations()` in `src/server/index.ts` (DB is not reachable during Nixpacks build).
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"

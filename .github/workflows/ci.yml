@@ -1,0 +1,41 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: captionflow
+          POSTGRES_PASSWORD: captionflow
+          POSTGRES_DB: captionflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U captionflow -d captionflow"
+          --health-interval 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://captionflow:captionflow@localhost:5432/captionflow
+      BASE_URL: http://localhost:3000
+      SESSION_SECRET: '01234567890123456789012345678901'
+      NODE_ENV: test
+      DISABLE_LTI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test:e2e
+        env:
+          FROM_EMAIL: test@test.com
