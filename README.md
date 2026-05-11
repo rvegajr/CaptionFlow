@@ -28,14 +28,21 @@ Dev (API + Vite HMR): `npm run dev` — API on `3000`, web on `5173` (proxied `/
 | `npm run build` | Production web + server |
 | `npm start` | Serve `dist/web` + API |
 
+## Local sync test (no backend)
+
+After `npm run build` and `npm start` (or dev with Vite), open **`/test-play/index.html`**: paste a YouTube URL or ID and WebVTT/SRT text to verify sync in the browser only (nothing stored).
+
 ## Docs
 
 - [docs/RAILWAY_SETUP.md](docs/RAILWAY_SETUP.md) — hosting (STOP S2–S4)
+- [docs/DOMAIN_SETUP.md](docs/DOMAIN_SETUP.md) — custom domain & email configuration
 - [docs/CANVAS_LTI.md](docs/CANVAS_LTI.md) — Canvas (STOP S5)
 - [docs/STOP_S1_DRIFT.md](docs/STOP_S1_DRIFT.md) — Phase 0 drift gate
 - [docs/VENDOR_CHECKLIST.md](docs/VENDOR_CHECKLIST.md) — audits / pen-test / LTI cert
 - [docs/A11Y_INTERNAL.md](docs/A11Y_INTERNAL.md) — internal a11y pass
 - [docs/VPAT_TEMPLATE.md](docs/VPAT_TEMPLATE.md) — VPAT shell
+- [docs/TRUST_LADDER.md](docs/TRUST_LADDER.md) — test coverage & verification strategy
+- [docs/RUNBOOK_BACKUPS.md](docs/RUNBOOK_BACKUPS.md) — database backup & restore procedures
 
 ## Phase 2–3 (in this repo)
 

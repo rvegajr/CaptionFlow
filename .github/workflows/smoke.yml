@@ -1,0 +1,40 @@
+name: smoke
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 6 hours, on the hour. Surfaces deploy regressions, DB outages,
+    # expired Postgres credentials, and migrations-on-boot failures within
+    # an SLA we can act on.
+    - cron: '0 */6 * * *'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      PROD_URL: ${{ vars.PROD_URL || 'https://captionflow-gh-production.up.railway.app' }}
+    steps:
+      - name: /health responds with status:ok and db:ok
+        run: |
+          set -eu
+          echo "probing $PROD_URL/health"
+          out=$(curl -fsS --max-time 15 "$PROD_URL/health")
+          echo "$out"
+          echo "$out" | grep -q '"status":"ok"' || { echo "status not ok"; exit 1; }
+          echo "$out" | grep -q '"db":"ok"' || { echo "db not ok"; exit 1; }
+
+      - name: /auth/magic-link rejects invalid email
+        run: |
+          set -eu
+          # The endpoint accepts well-formed emails; we drive an explicit reject
+          # path so we don't pollute production with smoke-only magic links.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            -X POST -H 'content-type: application/json' \
+            -d '{"email":"not-an-email"}' "$PROD_URL/auth/magic-link")
+          test "$code" = "400" || { echo "expected 400, got $code"; exit 1; }
+
+      - name: /api/public/resources rejects unknown id with 404
+        run: |
+          set -eu
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            "$PROD_URL/api/public/resources/00000000-0000-0000-0000-000000000000")
+          test "$code" = "404" || { echo "expected 404, got $code"; exit 1; }

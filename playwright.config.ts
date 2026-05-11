@@ -23,6 +23,7 @@ export default defineConfig({
       NODE_ENV: 'test',
       DISABLE_LTI: 'true',
       FROM_EMAIL: process.env.FROM_EMAIL ?? 'test@test.com',
+      EXPOSE_LAST_MAGIC_LINK: '1',
     },
   },
   use: {

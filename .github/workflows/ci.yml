@@ -32,6 +32,18 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      # L5 — supply chain: print npm audit for production deps. Reported as
+      # a non-blocking notice today: there are unreachable transitive vulns
+      # via `ltijs-sequelize -> sequelize -> mysql2` (we only use Postgres).
+      # Track and tighten in `docs/TRUST_LADDER.md`.
+      - name: npm audit (production deps, high+) [notice]
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+      # L5 — explicit type checks per project so npm run lint stays honest.
+      - name: tsc (server)
+        run: npx tsc --noEmit -p tsconfig.server.json
+      - name: tsc (web)
+        run: npx tsc --noEmit -p tsconfig.web.json
       - run: npm test
       - run: npm run build
       - run: npm run test:integration
@@ -39,3 +51,4 @@ jobs:
       - run: npm run test:e2e
         env:
           FROM_EMAIL: test@test.com
+          EXPOSE_LAST_MAGIC_LINK: '1'

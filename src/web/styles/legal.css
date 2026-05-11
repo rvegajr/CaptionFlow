@@ -1,0 +1,23 @@
+.legal {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  line-height: 1.55;
+}
+.legal h1 {
+  margin-bottom: var(--space-2);
+}
+.legal h2 {
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-2);
+}
+.legal ul {
+  padding-left: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.legal li {
+  margin-bottom: var(--space-1);
+}
+.legal p {
+  margin-bottom: var(--space-3);
+}

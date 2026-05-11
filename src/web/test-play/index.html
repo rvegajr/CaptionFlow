@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CaptionFlow — local sync test</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1rem;
+        max-width: 960px;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: flex-end;
+        margin-bottom: 1rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.875rem;
+      }
+      input[type='text'],
+      select {
+        padding: 0.35rem 0.5rem;
+        min-width: 12rem;
+      }
+      textarea {
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 10rem;
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+      button[type='submit'] {
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+      }
+      #player {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: #000;
+      }
+      .cue-display {
+        min-height: 3rem;
+        background: #111;
+        color: #fff;
+        padding: 1rem;
+        text-align: center;
+        font-size: clamp(18px, 2.5vw, 28px);
+      }
+      .hud {
+        font-family: monospace;
+        font-size: 12px;
+        color: #444;
+        margin-top: 0.5rem;
+      }
+      .error {
+        color: #c00;
+        margin: 0.5rem 0;
+      }
+      p.lead {
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Local sync test (no login, no DB)</h1>
+    <p class="lead">
+      Paste any public YouTube URL or video ID and your cue file (WebVTT or SRT). Nothing is uploaded; playback runs only in your
+      browser.
+    </p>
+    <form id="form">
+      <label>
+        YouTube URL or ID
+        <input id="youtube" type="text" autocomplete="off" spellcheck="false" required />
+      </label>
+      <div class="toolbar">
+        <label>
+          Caption format
+          <select id="format" aria-label="Caption file format">
+            <option value="vtt">WebVTT</option>
+            <option value="srt">SRT</option>
+          </select>
+        </label>
+        <button type="submit">Load &amp; play</button>
+      </div>
+      <label for="cues-text">Cue file</label>
+      <textarea id="cues-text" spellcheck="false" required></textarea>
+    </form>
+    <p id="msg" class="error" aria-live="assertive"></p>
+    <div id="player"></div>
+    <div id="cue" class="cue-display" aria-live="polite">—</div>
+    <pre id="hud" class="hud"></pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

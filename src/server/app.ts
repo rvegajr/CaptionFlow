@@ -118,6 +118,16 @@ export async function buildApp(opts: BuildAppOptions) {
     }
   }
 
+  if (process.env.EXPOSE_LAST_MAGIC_LINK === '1') {
+    // Test-only: expose the last magic-link captured by FakeMagicLinkSender so
+    // Playwright can drive the login flow without polling a real mailbox.
+    // Never enabled in production (gated by an explicit env var).
+    app.get('/__test__/last-magic-link', async () => {
+      const sender = opts.magicLinks as unknown as { lastLink?: string | null };
+      return { link: sender.lastLink ?? null };
+    });
+  }
+
   if (opts.staticDir) {
     await app.register(staticPlugin, {
       root: resolve(opts.staticDir),
