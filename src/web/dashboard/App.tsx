@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LandingPage } from './pages/landing.js';
 import { LoginPage } from './pages/login.js';
 import { CaptionsListPage } from './pages/captions-list.js';
 import { UploadPage } from './pages/upload.js';
@@ -28,21 +29,29 @@ export function App() {
     if (me && !window.location.hash) window.location.hash = 'captions';
   }, [me]);
 
-  if (me === undefined) return <div className="dashboard">Loading…</div>;
+  if (me === undefined)
+    return (
+      <div className="auth-shell" role="status" aria-live="polite">
+        <p style={{ color: 'var(--app-ink-mute)' }}>Loading CaptionFlow…</p>
+      </div>
+    );
 
   if (!me) {
-    return <LoginPage onDone={() => void api.getMe().then(setMe)} />;
+    if (hash === 'login') {
+      return <LoginPage onDone={() => void api.getMe().then(setMe)} />;
+    }
+    return <LandingPage onSignIn={() => (window.location.hash = 'login')} />;
   }
 
   switch (hash) {
     case 'upload':
-      return <UploadPage />;
+      return <UploadPage me={me} />;
     case 'resources':
-      return <ResourcesListPage />;
+      return <ResourcesListPage me={me} />;
     case 'admin':
-      return <AdminViewsPage />;
+      return <AdminViewsPage me={me} />;
     case 'captions':
     default:
-      return <CaptionsListPage />;
+      return <CaptionsListPage me={me} />;
   }
 }

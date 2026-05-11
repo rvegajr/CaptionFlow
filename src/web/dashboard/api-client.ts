@@ -49,6 +49,10 @@ export async function getMe(): Promise<Instructor | null> {
   return json<Instructor>(res);
 }
 
+export async function logout(): Promise<void> {
+  await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+}
+
 export async function listCaptions(): Promise<Caption[]> {
   const res = await fetch('/api/captions', { credentials: 'include' });
   return json<Caption[]>(res);
