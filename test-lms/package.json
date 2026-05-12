@@ -1,0 +1,21 @@
+{
+  "name": "captionflow-mock-lms",
+  "version": "1.0.0",
+  "description": "Mock LMS for testing CaptionFlow LTI 1.3 integration",
+  "main": "server.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs"
+  },
+  "keywords": ["lti", "lms", "testing", "captionflow"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ltijs": "^5.9.2",
+    "ltijs-sequelize": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
