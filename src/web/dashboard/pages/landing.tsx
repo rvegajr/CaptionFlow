@@ -28,7 +28,7 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
         <header className="lp__hero">
           <div>
             <span className="lp__eyebrow">
-              <DotIcon /> WCAG 2.1 AA · LTI 1.3 · FERPA-friendly
+              <DotIcon /> WCAG 2.1 AA · FERPA-friendly
             </span>
             <h1 className="lp__headline">
               Captions that actually&nbsp;
@@ -55,7 +55,7 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
                 <span className="lp__trust-dot" aria-hidden="true" /> No video re-hosting
               </li>
               <li className="lp__trust-item">
-                <span className="lp__trust-dot" aria-hidden="true" /> Canvas, Blackboard, Moodle, D2L
+                <span className="lp__trust-dot" aria-hidden="true" /> Shareable direct links
               </li>
               <li className="lp__trust-item">
                 <span className="lp__trust-dot" aria-hidden="true" /> Bring your own SRT / VTT
@@ -169,9 +169,9 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
                 </p>
               </li>
               <li className="lp__step">
-                <h3>Share or launch from your LMS</h3>
+                <h3>Share with students</h3>
                 <p>
-                  Use a direct link or an LTI 1.3 launch in Canvas, Blackboard, Moodle, or D2L.
+                  Copy a direct link and paste it into any course page, assignment, or announcement.
                   Captions stay locked in sync, even on pause and seek.
                 </p>
               </li>
@@ -198,8 +198,8 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
             />
             <Feature
               icon={<PuzzleIcon />}
-              title="LTI 1.3 launches"
-              body="Add CaptionFlow once to Canvas, Blackboard, Moodle, or D2L. Faculty get a launch link; viewers get the captioned surface. We track institution context for licensing."
+              title="Shareable resources"
+              body="Every captioned video gets a permanent, shareable link. Copy it into your LMS, email it to students, or embed it anywhere. No re-uploading, no broken links."
             />
             <Feature
               icon={<UploadIcon />}
