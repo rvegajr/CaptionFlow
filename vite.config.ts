@@ -16,6 +16,7 @@ export default defineConfig({
       input: {
         dashboard: resolve(webRoot, 'index.html'),
         caption_surface: resolve(webRoot, 'caption-surface.html'),
+        lti_picker: resolve(webRoot, 'lti-picker.html'),
         spike: resolve(webRoot, 'spike/index.html'),
         test_play: resolve(webRoot, 'test-play/index.html'),
         legal_privacy: resolve(webRoot, 'legal/privacy.html'),

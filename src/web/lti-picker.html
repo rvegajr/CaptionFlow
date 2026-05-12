@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Select Content — CaptionFlow</title>
+    <link rel="stylesheet" href="/styles/reset.css" />
+    <link rel="stylesheet" href="/styles/tokens.css" />
+    <link rel="stylesheet" href="/styles/base.css" />
+    <link rel="stylesheet" href="/styles/components.css" />
+    <link rel="stylesheet" href="/styles/dashboard.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--app-surface-2);
+        min-height: 100vh;
+      }
+      .picker {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .picker-header {
+        margin-bottom: 24px;
+      }
+      .picker-header h1 {
+        margin: 0 0 8px;
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+      .picker-header p {
+        margin: 0;
+        color: var(--app-ink-soft);
+      }
+      .resource-grid {
+        display: grid;
+        gap: 12px;
+      }
+      .resource-item {
+        padding: 16px 18px;
+        background: var(--app-surface);
+        border: 2px solid var(--app-divider);
+        border-radius: var(--app-radius);
+        cursor: pointer;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .resource-item:hover {
+        border-color: var(--app-accent-soft);
+        background: var(--app-surface);
+      }
+      .resource-item.is-selected {
+        border-color: var(--app-accent);
+        background: var(--app-accent-tint);
+      }
+      .resource-item h3 {
+        margin: 0 0 4px;
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      .resource-item .resource-meta {
+        font-size: 0.875rem;
+        color: var(--app-ink-soft);
+      }
+      .picker-actions {
+        margin-top: 20px;
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+      }
+      .error-message {
+        padding: 12px 16px;
+        background: var(--app-error-tint);
+        color: var(--app-error);
+        border-radius: var(--app-radius);
+        margin-bottom: 16px;
+      }
+      .empty-state {
+        padding: 48px 24px;
+        text-align: center;
+        color: var(--app-ink-soft);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="picker">
+      <div class="picker-header">
+        <h1>Select Content to Add</h1>
+        <p>Choose a captioned video to add to your course module.</p>
+      </div>
+      <div id="error" class="error-message" style="display: none"></div>
+      <div id="resources" class="resource-grid"></div>
+      <div id="empty" class="empty-state" style="display: none">
+        <p>You haven't created any captioned videos yet.</p>
+        <p>Visit the CaptionFlow dashboard to upload your first caption.</p>
+      </div>
+      <div class="picker-actions">
+        <button type="button" class="button is-secondary" onclick="cancelPicker()">Cancel</button>
+        <button type="button" class="button is-primary" id="confirmBtn" disabled onclick="confirmSelection()">
+          Add to Course
+        </button>
+      </div>
+    </div>
+
+    <script>
+      let selectedResourceId = null;
+
+      async function loadResources() {
+        try {
+          const res = await fetch('/api/resources', { credentials: 'include' });
+          if (!res.ok) throw new Error('Failed to load resources');
+          const data = await res.json();
+          
+          if (!data.resources || data.resources.length === 0) {
+            document.getElementById('empty').style.display = 'block';
+            return;
+          }
+
+          const grid = document.getElementById('resources');
+          data.resources.forEach(resource => {
+            const item = document.createElement('div');
+            item.className = 'resource-item';
+            item.dataset.id = resource.id;
+            item.onclick = () => selectResource(resource.id);
+            
+            item.innerHTML = `
+              <h3>YouTube Video: ${resource.youtubeVideoId}</h3>
+              <div class="resource-meta">
+                Resource ID: ${resource.id}
+              </div>
+            `;
+            
+            grid.appendChild(item);
+          });
+        } catch (err) {
+          const errorEl = document.getElementById('error');
+          errorEl.textContent = 'Failed to load resources: ' + err.message;
+          errorEl.style.display = 'block';
+        }
+      }
+
+      function selectResource(id) {
+        document.querySelectorAll('.resource-item').forEach(item => {
+          item.classList.remove('is-selected');
+        });
+        
+        const item = document.querySelector(`[data-id="${id}"]`);
+        if (item) {
+          item.classList.add('is-selected');
+          selectedResourceId = id;
+          document.getElementById('confirmBtn').disabled = false;
+        }
+      }
+
+      async function confirmSelection() {
+        if (!selectedResourceId) return;
+        
+        const confirmBtn = document.getElementById('confirmBtn');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Adding...';
+        
+        try {
+          const res = await fetch('/lti/picker/confirm', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ resourceId: selectedResourceId }),
+          });
+          
+          if (!res.ok) throw new Error('Failed to create deep link');
+          
+          // The response is an HTML form that auto-submits back to the LMS
+          const html = await res.text();
+          document.body.innerHTML = html;
+          
+          // Find and submit the form
+          const form = document.querySelector('form');
+          if (form) form.submit();
+        } catch (err) {
+          const errorEl = document.getElementById('error');
+          errorEl.textContent = 'Failed to add content: ' + err.message;
+          errorEl.style.display = 'block';
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Add to Course';
+        }
+      }
+
+      function cancelPicker() {
+        window.parent.postMessage('cancel', '*');
+      }
+
+      loadResources();
+    </script>
+  </body>
+</html>

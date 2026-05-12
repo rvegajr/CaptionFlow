@@ -50,6 +50,7 @@ export async function registerLti(
     appRoute: '/lti/launch',
     loginRoute: '/lti/login',
     keysetRoute: '/.well-known/jwks',
+    deepLinkingRoute: '/lti/deep-link',
     devMode: !opts.isProd,
     cookies: {
       secure: opts.isProd,
@@ -57,12 +58,30 @@ export async function registerLti(
     },
   });
 
+  // Deep Linking handler - instructor picks content
+  lti.onDeepLinking(async (token: Record<string, unknown>, req: unknown, res: { redirect: (u: string) => void }) => {
+    // Read the instructor from the token
+    const user = token.user as { email?: string; name?: string; id?: string } | undefined;
+    const email = (user?.email ?? `unknown+${user?.id ?? 'user'}@lti.local`).toLowerCase();
+    let instructor = await opts.instructors.findByEmail(email);
+    if (!instructor) {
+      instructor = await opts.instructors.create(email, user?.name ?? null);
+    }
+
+    // Redirect to content picker page with LTI session
+    const pickerUrl = `${opts.baseUrl}/lti/picker`;
+    return res.redirect(pickerUrl);
+  });
+
+  // Regular launch handler - student views content
   lti.onConnect(
     async (token: Record<string, unknown>, _req: unknown, res: { redirect: (u: string) => void }) => {
       const platformContext = token.platformContext as
-        | { resource?: { id?: string } }
+        | { resource?: { id?: string }; custom?: { captionflow_resource_id?: string } }
         | undefined;
       const linkId = platformContext?.resource?.id ?? 'unknown-link';
+      const customResourceId = platformContext?.custom?.captionflow_resource_id;
+
       const iss = String(token.iss ?? '');
       const clientId = String((token as { aud?: string }).aud ?? '');
       const deploymentId = String((token as { deploymentId?: string }).deploymentId ?? '');
@@ -90,6 +109,13 @@ export async function registerLti(
         );
       }
 
+      // If deep-linked resource ID is present, use it
+      if (customResourceId) {
+        const target = `${opts.baseUrl}/caption-surface.html?resource=${encodeURIComponent(customResourceId)}`;
+        return res.redirect(target);
+      }
+
+      // Otherwise fall back to resource link lookup or stub creation
       let resource = await opts.resources.findByLtiResourceLink(linkId);
       if (!resource) {
         const stubVtt = `WEBVTT
@@ -147,5 +173,32 @@ Configure this video in CaptionFlow — replace this placeholder caption.
       return lti.app(req, res, next);
     }
     return next();
+  });
+
+  // Content picker endpoint (returns deep link to LMS)
+  app.post('/lti/picker/confirm', async (req, reply) => {
+    const body = req.body as { resourceId: string };
+    const resourceId = body.resourceId;
+
+    if (!resourceId) {
+      return reply.code(400).send({ error: 'resourceId required' });
+    }
+
+    try {
+      const contentItem = {
+        type: 'ltiResourceLink',
+        title: 'CaptionFlow Video',
+        url: `${opts.baseUrl}/lti/launch`,
+        custom: {
+          captionflow_resource_id: resourceId,
+        },
+      };
+
+      const form = await lti.DeepLinking.createDeepLinkingForm(req, reply, [contentItem]);
+      return reply.type('text/html').send(form);
+    } catch (err) {
+      app.log.error({ err }, 'Deep linking failed');
+      return reply.code(500).send({ error: 'Deep linking failed' });
+    }
   });
 }
