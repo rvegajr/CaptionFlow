@@ -5,6 +5,7 @@ import type { PgInstitutionRepo } from '../repos/pg-institution-repo.js';
 import type { PgInstructorRepo } from '../repos/pg-instructor-repo.js';
 import type { PgResourceRepo } from '../repos/pg-resource-repo.js';
 import type { PgCaptionRepo } from '../repos/pg-caption-repo.js';
+import type { PgLtiPlatformRepo } from '../repos/pg-lti-platform-repo.js';
 
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +35,7 @@ export async function registerLti(
     instructors: PgInstructorRepo;
     resources: PgResourceRepo;
     captions: PgCaptionRepo;
+    ltiPlatforms: PgLtiPlatformRepo;
   },
 ): Promise<void> {
   const { database, user, password, host, port } = parseDatabaseUrl(opts.databaseUrl);
@@ -116,6 +118,27 @@ Configure this video in CaptionFlow — replace this placeholder caption.
   );
 
   await lti.deploy({ serverless: true, silent: true });
+
+  // Register all platforms from the database
+  const platforms = await opts.ltiPlatforms.findAll();
+  for (const platform of platforms) {
+    try {
+      await lti.registerPlatform({
+        url: platform.issuerUrl,
+        name: platform.name,
+        clientId: platform.clientId,
+        authenticationEndpoint: platform.authEndpoint,
+        accesstokenEndpoint: platform.tokenEndpoint,
+        authConfig: {
+          method: 'JWK_SET',
+          key: platform.jwksUrl,
+        },
+      });
+      app.log.info({ platformId: platform.id, name: platform.name }, 'Registered LTI platform');
+    } catch (err) {
+      app.log.warn({ err, platformId: platform.id }, 'Failed to register LTI platform');
+    }
+  }
 
   await app.register(fastifyExpress);
   app.use((req, res, next) => {

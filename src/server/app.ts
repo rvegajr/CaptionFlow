@@ -137,6 +137,7 @@ export async function buildApp(opts: BuildAppOptions) {
         instructors,
         resources,
         captions,
+        ltiPlatforms,
       });
     } catch (e) {
       app.log.warn({ err: e }, 'LTI registration skipped or failed');
