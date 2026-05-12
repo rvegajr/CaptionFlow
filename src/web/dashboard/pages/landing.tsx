@@ -1,4 +1,19 @@
 import { Footer } from '../../components/Footer.js';
+import { DemoSurface } from '../../components/DemoSurface.js';
+import type { Cue } from '@shared/types.js';
+
+const DEMO_CUES: Cue[] = [
+  { startSec: 0.0, endSec: 4.869, text: 'How to play laser tag' },
+  { startSec: 7.909, endSec: 11.219, text: 'Laser tag is a great game for a couple of friends, a' },
+  { startSec: 11.219, endSec: 14.927, text: 'party, or to join in with a new group of people.' },
+  { startSec: 14.927, endSec: 20.517, text: "It's easy to learn the gameplay basics, but truly dominating this fast paced shooting game" },
+  { startSec: 20.517, endSec: 25.424, text: 'takes practice and strategy.' },
+  { startSec: 25.424, endSec: 29.499, text: 'Part one, preparing for a game:' },
+  { startSec: 29.499, endSec: 33.669, text: 'One, do research on your arena.' },
+  { startSec: 33.669, endSec: 38.21, text: 'See if you can find a map of the arena and become familiar with it.' },
+  { startSec: 38.21, endSec: 43.634, text: 'It will be very hard to do so in the low light environment.' },
+  { startSec: 43.634, endSec: 47.335, text: 'Two. Dress for the event.' },
+];
 
 export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
   return (
@@ -63,34 +78,11 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
             </ul>
           </div>
 
-          <div className="lp__demo" aria-hidden="true">
-            <div className="lp__demo-titlebar">
-              <span className="lp__demo-dot" />
-              <span className="lp__demo-dot" />
-              <span className="lp__demo-dot" />
-              <span className="lp__demo-url">captionflow.link/play/lecture-3</span>
-            </div>
-            <div className="lp__demo-video">
-              <span className="lp__demo-play">
-                <PlayIcon />
-              </span>
-              <span className="lp__demo-tape" />
-            </div>
-            <div className="lp__demo-caption">
-              <div className="lp__demo-caption-line">
-                <span>Welcome to lecture three.</span>
-                <span>Today we'll cover signal processing.</span>
-                <span>Notice the waveform on screen.</span>
-                <span>It illustrates Nyquist's theorem.</span>
-              </div>
-              <div className="lp__demo-caption-meta">
-                <span className="lp__demo-pill">
-                  <CheckIcon /> Instructor-authored
-                </span>
-                <span>Synced ±250 ms · WCAG 2.1 AA</span>
-              </div>
-            </div>
-          </div>
+          <DemoSurface
+            videoId="w_GS6fqgu08"
+            cues={DEMO_CUES}
+            posterUrl="https://img.youtube.com/vi/w_GS6fqgu08/maxresdefault.jpg"
+          />
         </header>
 
         <section className="lp__section" aria-labelledby="problem-heading">
