@@ -5,6 +5,7 @@ import { CaptionsListPage } from './pages/captions-list.js';
 import { UploadPage } from './pages/upload.js';
 import { ResourcesListPage } from './pages/resources-list.js';
 import { AdminViewsPage } from './pages/admin-views.js';
+import { LmsConfigPage } from './pages/lms-config.js';
 import * as api from './api-client.js';
 
 function route(): string {
@@ -50,6 +51,8 @@ export function App() {
       return <ResourcesListPage me={me} />;
     case 'admin':
       return <AdminViewsPage me={me} />;
+    case 'lms-config':
+      return <LmsConfigPage me={me} />;
     case 'captions':
     default:
       return <CaptionsListPage me={me} />;

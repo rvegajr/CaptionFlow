@@ -886,6 +886,152 @@
   color: var(--app-ink-soft);
 }
 
+/* LMS Config page -------------------------------------------------------- */
+
+.config-grid {
+  display: grid;
+  gap: 16px;
+}
+.config-row {
+  display: grid;
+  gap: 8px;
+}
+.config-row label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--app-ink-soft);
+  margin: 0;
+}
+.config-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-divider);
+  border-radius: var(--app-radius-sm);
+}
+.config-value code {
+  flex: 1;
+  font-size: 0.875rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  color: var(--app-ink);
+  word-break: break-all;
+}
+
+.platforms-list {
+  display: grid;
+  gap: 16px;
+}
+.platform-card {
+  padding: 18px 20px;
+  border: 1px solid var(--app-divider);
+  border-radius: var(--app-radius);
+  background: var(--app-surface-2);
+}
+.platform-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.platform-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.platform-actions {
+  display: flex;
+  gap: 8px;
+}
+.platform-details {
+  display: grid;
+  gap: 12px;
+  font-size: 0.875rem;
+}
+.platform-details dt {
+  font-weight: 600;
+  color: var(--app-ink-soft);
+  margin-bottom: 4px;
+}
+.platform-details dd {
+  margin: 0;
+  color: var(--app-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  word-break: break-all;
+}
+
+/* Modal overlay & card ---------------------------------------------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-card {
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  background: var(--app-surface);
+  border: 1px solid var(--app-divider);
+  border-radius: var(--app-radius);
+  box-shadow: var(--app-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--app-divider);
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--app-ink-soft);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--app-radius-sm);
+}
+.modal-close:hover {
+  background: var(--app-surface-2);
+  color: var(--app-ink);
+}
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+.modal-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid var(--app-divider);
+}
+
 /* Legacy / fallback selectors used by older pages and tests ------------ */
 
 .dashboard {

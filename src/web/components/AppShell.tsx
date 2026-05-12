@@ -2,14 +2,22 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as api from '../dashboard/api-client.js';
 import { Footer } from './Footer.js';
 
-type Route = 'captions' | 'upload' | 'resources' | 'admin';
+type Route = 'captions' | 'upload' | 'resources' | 'admin' | 'lms-config';
 
-const NAV: ReadonlyArray<{ id: Route; label: string; href: string; icon: ReactNode }> = [
-  { id: 'captions', label: 'Captions', href: '#captions', icon: <CaptionsIcon /> },
-  { id: 'upload', label: 'Upload', href: '#upload', icon: <UploadIcon /> },
-  { id: 'resources', label: 'Resources', href: '#resources', icon: <ResourcesIcon /> },
-  { id: 'admin', label: 'Views', href: '#admin', icon: <ChartIcon /> },
-];
+function buildNav(role: string): ReadonlyArray<{ id: Route; label: string; href: string; icon: ReactNode }> {
+  const base = [
+    { id: 'captions' as const, label: 'Captions', href: '#captions', icon: <CaptionsIcon /> },
+    { id: 'upload' as const, label: 'Upload', href: '#upload', icon: <UploadIcon /> },
+    { id: 'resources' as const, label: 'Resources', href: '#resources', icon: <ResourcesIcon /> },
+    { id: 'admin' as const, label: 'Views', href: '#admin', icon: <ChartIcon /> },
+  ];
+  
+  if (role === 'institution_admin') {
+    base.push({ id: 'lms-config', label: 'LMS Config', href: '#lms-config', icon: <GearIcon /> });
+  }
+  
+  return base;
+}
 
 export function AppShell({
   me,
@@ -20,6 +28,7 @@ export function AppShell({
   current: Route;
   children: ReactNode;
 }) {
+  const NAV = buildNav(me.role);
   return (
     <div className="app">
       <a className="app__skip" href="#main">
@@ -210,6 +219,15 @@ function SignOutIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
     </svg>
   );
 }
