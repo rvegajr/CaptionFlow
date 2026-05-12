@@ -132,3 +132,22 @@ export const captionGrant = pgTable(
     uniqGrant: uniqueIndex('caption_grant_unique').on(t.ownerCaptionId, t.granteeInstructorId),
   }),
 );
+
+export const ltiPlatform = pgTable(
+  'lti_platform',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    issuerUrl: text('issuer_url').notNull(),
+    clientId: text('client_id').notNull(),
+    authEndpoint: text('auth_endpoint').notNull(),
+    tokenEndpoint: text('token_endpoint').notNull(),
+    jwksUrl: text('jwks_url').notNull(),
+    deploymentIds: text('deployment_ids').array().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    issuerClientIdx: uniqueIndex('lti_platform_issuer_client_unique').on(t.issuerUrl, t.clientId),
+  }),
+);

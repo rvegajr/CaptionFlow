@@ -16,6 +16,7 @@ import { PgResourceRepo } from './repos/pg-resource-repo.js';
 import { PgInstitutionRepo } from './repos/pg-institution-repo.js';
 import { PgViewRepo } from './repos/pg-view-repo.js';
 import { PgGrantRepo } from './repos/pg-grant-repo.js';
+import { PgLtiPlatformRepo } from './repos/pg-lti-platform-repo.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCaptionRoutes } from './routes/captions.js';
@@ -101,6 +102,7 @@ export async function buildApp(opts: BuildAppOptions) {
   const institutions = new PgInstitutionRepo(opts.db);
   const views = new PgViewRepo(opts.db);
   const grants = new PgGrantRepo(opts.db);
+  const ltiPlatforms = new PgLtiPlatformRepo(opts.db);
 
   registerHealthRoutes(app, { db: opts.db });
   registerAuthRoutes(app, {
@@ -121,7 +123,7 @@ export async function buildApp(opts: BuildAppOptions) {
   });
   registerResourceRoutes(app, { resources });
   registerPublicRoutes(app, { resources, captions, views, instructors });
-  registerAdminRoutes(app, { views, instructors });
+  registerAdminRoutes(app, { views, instructors, ltiPlatforms });
   registerGrantRoutes(app, { captions, instructors, grants });
 
   if (opts.enableLti !== false) {
