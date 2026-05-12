@@ -43,6 +43,28 @@ export interface BuildAppOptions {
 
 export async function buildApp(opts: BuildAppOptions) {
   const app = Fastify({ logger: true });
+  
+  // Parse LMS frame-ancestors from environment variable
+  const lmsFrameAncestors = process.env.LMS_FRAME_ANCESTORS
+    ? process.env.LMS_FRAME_ANCESTORS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  
+  // Default known LMS domains if not explicitly configured
+  const defaultLmsOrigins = [
+    '*.instructure.com',
+    '*.canvaslms.com',
+    '*.blackboard.com',
+    '*.blackboardcdn.com',
+    '*.moodlecloud.com',
+    '*.moodle.com',
+    '*.brightspace.com',
+    '*.desire2learn.com',
+  ];
+  
+  const frameAncestorsDirective = lmsFrameAncestors.length > 0 
+    ? ["'self'", ...lmsFrameAncestors]
+    : ["'self'", ...defaultLmsOrigins];
+  
   await app.register(helmet, {
     contentSecurityPolicy: opts.isProd
       ? {
@@ -56,6 +78,7 @@ export async function buildApp(opts: BuildAppOptions) {
               'https://www.gstatic.com',
             ],
             frameSrc: ["'self'", 'https://www.youtube.com', 'https://www.youtube-nocookie.com'],
+            frameAncestors: frameAncestorsDirective,
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", 'data:', 'https:'],
             connectSrc: ["'self'", 'https://www.youtube.com'],
