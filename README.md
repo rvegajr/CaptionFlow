@@ -49,6 +49,7 @@ node server.cjs
 
 - [docs/RAILWAY_SETUP.md](docs/RAILWAY_SETUP.md) — hosting (STOP S2–S4)
 - [docs/DOMAIN_SETUP.md](docs/DOMAIN_SETUP.md) — custom domain & email configuration
+- [docs/NOCTUSOFT_RELAY.md](docs/NOCTUSOFT_RELAY.md) — outbound email & Google Translate via Noctusoft
 - [docs/CANVAS_LTI.md](docs/CANVAS_LTI.md) — Canvas (STOP S5)
 - [docs/LMS_TESTING.md](docs/LMS_TESTING.md) — testing with real & mock LMS platforms
 - [docs/STOP_S1_DRIFT.md](docs/STOP_S1_DRIFT.md) — Phase 0 drift gate

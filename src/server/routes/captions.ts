@@ -11,6 +11,7 @@ interface Deps {
   captions: CaptionReader & CaptionWriter & CaptionSearcher;
   deeplKey?: string;
   googleTranslateKey?: string;
+  noctusoftRelayKey?: string;
 }
 
 export function registerCaptionRoutes(app: FastifyInstance, deps: Deps): void {
@@ -123,9 +124,10 @@ export function registerCaptionRoutes(app: FastifyInstance, deps: Deps): void {
     }
     const cached = await deps.captions.findMachineTranslation(id, targetLang);
     if (cached) return reply.send(cached);
-    const tlOpts: { deeplKey?: string; googleKey?: string } = {};
+    const tlOpts: { deeplKey?: string; googleKey?: string; noctusoftRelayKey?: string } = {};
     if (deps.deeplKey) tlOpts.deeplKey = deps.deeplKey;
     if (deps.googleTranslateKey) tlOpts.googleKey = deps.googleTranslateKey;
+    if (deps.noctusoftRelayKey) tlOpts.noctusoftRelayKey = deps.noctusoftRelayKey;
     const translated = await translateLines(source.contentText, targetLang, tlOpts);
     const format = source.format;
     const parsed = parseCaption(translated, format);

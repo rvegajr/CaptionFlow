@@ -1,8 +1,21 @@
 /** Machine-translate caption text lines (preserves newlines). */
+export interface TranslateOpts {
+  deeplKey?: string;
+  googleKey?: string;
+  /**
+   * Optional Noctusoft Communication Relay deploy key (`nsins_dk_*`).
+   * When set, Google Translate calls are routed through
+   * `googleapis.noctusoft.com` instead of `translation.googleapis.com`.
+   * The relay forwards the request and the upstream `?key=…` query stays
+   * the same, so we still pass `googleKey`.
+   */
+  noctusoftRelayKey?: string;
+}
+
 export async function translateLines(
   text: string,
   targetLang: string,
-  opts: { deeplKey?: string; googleKey?: string },
+  opts: TranslateOpts,
 ): Promise<string> {
   const lines = text.split('\n');
   if (opts.deeplKey) {
@@ -27,14 +40,18 @@ export async function translateLines(
     return out.join('\n');
   }
   if (opts.googleKey) {
-    const res = await fetch(
-      `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(opts.googleKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: lines, target: targetLang, format: 'text' }),
-      },
-    );
+    const host = opts.noctusoftRelayKey
+      ? 'https://googleapis.noctusoft.com/translation/language/translate/v2'
+      : 'https://translation.googleapis.com/language/translate/v2';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (opts.noctusoftRelayKey) {
+      headers.Authorization = `Bearer ${opts.noctusoftRelayKey}`;
+    }
+    const res = await fetch(`${host}?key=${encodeURIComponent(opts.googleKey)}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ q: lines, target: targetLang, format: 'text' }),
+    });
     if (!res.ok) throw new Error(`google translate ${res.status}`);
     const j = (await res.json()) as { data: { translations: { translatedText: string }[] } };
     return j.data.translations.map((t) => t.translatedText).join('\n');

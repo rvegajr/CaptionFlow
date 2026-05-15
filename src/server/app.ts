@@ -40,6 +40,12 @@ export interface BuildAppOptions {
   enableLti?: boolean;
   deeplApiKey?: string;
   googleTranslateApiKey?: string;
+  /**
+   * Optional Noctusoft Communication Relay deploy key. When set, Google
+   * Translate calls are routed through googleapis.noctusoft.com instead of
+   * direct googleapis.com.
+   */
+  noctusoftRelayKey?: string;
 }
 
 export async function buildApp(opts: BuildAppOptions) {
@@ -119,6 +125,9 @@ export async function buildApp(opts: BuildAppOptions) {
     ...(opts.deeplApiKey !== undefined ? { deeplKey: opts.deeplApiKey } : {}),
     ...(opts.googleTranslateApiKey !== undefined
       ? { googleTranslateKey: opts.googleTranslateApiKey }
+      : {}),
+    ...(opts.noctusoftRelayKey !== undefined
+      ? { noctusoftRelayKey: opts.noctusoftRelayKey }
       : {}),
   });
   registerResourceRoutes(app, { resources });

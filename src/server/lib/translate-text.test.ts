@@ -84,4 +84,42 @@ describe('translateLines', () => {
     fetchSpy.mockResolvedValue(new Response('boom', { status: 500 }));
     await expect(translateLines('x', 'es', { googleKey: 'gk' })).rejects.toThrow(/google translate 500/);
   });
+
+  it('routes Google Translate through the Noctusoft relay when noctusoftRelayKey is set', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({ data: { translations: [{ translatedText: 'hola' }] } }),
+        { status: 200 },
+      ),
+    );
+
+    const out = await translateLines('hello', 'es', {
+      googleKey: 'gk',
+      noctusoftRelayKey: 'nsins_dk_test',
+    });
+
+    expect(out).toBe('hola');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(String(url)).toContain('googleapis.noctusoft.com');
+    expect(String(url)).toContain('key=gk');
+    const headers = (init as { headers?: Record<string, string> }).headers ?? {};
+    expect(headers.Authorization).toBe('Bearer nsins_dk_test');
+  });
+
+  it('does not route through Noctusoft when relay key is absent', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({ data: { translations: [{ translatedText: 'hola' }] } }),
+        { status: 200 },
+      ),
+    );
+
+    await translateLines('hello', 'es', { googleKey: 'gk' });
+
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(String(url)).toContain('translation.googleapis.com');
+    const headers = (init as { headers?: Record<string, string> }).headers ?? {};
+    expect(headers.Authorization).toBeUndefined();
+  });
 });
