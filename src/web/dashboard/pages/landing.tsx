@@ -58,11 +58,14 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
             </p>
             <div className="lp__cta-row">
               <button type="button" className="lp__btn" onClick={onSignIn}>
-                Get started — sign in
+                Sign up free — 5 links
                 <ArrowRightIcon />
               </button>
+              <button type="button" className="lp__btn lp__btn--secondary" onClick={onSignIn}>
+                Sign in
+              </button>
               <a className="lp__btn lp__btn--secondary" href="/test-play/">
-                Try a quick sync test
+                Try the sync test
               </a>
             </div>
             <ul className="lp__trust" aria-label="Trust signals">
@@ -268,16 +271,125 @@ export function LandingPage({ onSignIn }: { onSignIn: () => void }) {
           </div>
         </section>
 
+        <section className="lp__section" aria-labelledby="pricing-heading">
+          <div className="lp__section-head">
+            <p className="lp__kicker">Pricing</p>
+            <h2 id="pricing-heading" className="lp__section-title">
+              Start free. Upgrade only when you need to.
+            </h2>
+            <p className="lp__section-sub">
+              No per-view fees. No per-minute fees. No surprise bills. You pay for how many
+              captioned videos you keep active — that's it.
+            </p>
+          </div>
+          <div className="lp__pricing-grid">
+            <article className="lp__price-card">
+              <h3 className="lp__price-name">Free</h3>
+              <p className="lp__price-amount">
+                <span className="lp__price-figure">$0</span>
+                <span className="lp__price-period">forever</span>
+              </p>
+              <p className="lp__price-tag">For trying it out</p>
+              <ul className="lp__price-features">
+                <li>
+                  <CheckIcon /> <strong>5</strong> active captioned videos
+                </li>
+                <li>
+                  <CheckIcon /> Unlimited student views
+                </li>
+                <li>
+                  <CheckIcon /> SRT &amp; VTT upload
+                </li>
+                <li>
+                  <CheckIcon /> Shareable direct links
+                </li>
+                <li className="lp__price-features-muted">
+                  <CheckIcon /> "Captioned with CaptionFlow" badge on viewer
+                </li>
+              </ul>
+              <button
+                type="button"
+                className="lp__btn lp__btn--secondary lp__price-cta"
+                onClick={onSignIn}
+              >
+                Start free
+              </button>
+            </article>
+
+            <article className="lp__price-card lp__price-card--featured">
+              <span className="lp__price-badge">Most popular</span>
+              <h3 className="lp__price-name">Pro</h3>
+              <p className="lp__price-amount">
+                <span className="lp__price-figure">$99</span>
+                <span className="lp__price-period">/ year</span>
+              </p>
+              <p className="lp__price-tag">For one instructor, all year</p>
+              <ul className="lp__price-features">
+                <li>
+                  <CheckIcon /> <strong>100</strong> active captioned videos
+                </li>
+                <li>
+                  <CheckIcon /> Unlimited student views
+                </li>
+                <li>
+                  <CheckIcon /> Machine translation included
+                </li>
+                <li>
+                  <CheckIcon /> No badge on viewer
+                </li>
+                <li>
+                  <CheckIcon /> Priority support
+                </li>
+              </ul>
+              <button type="button" className="lp__btn lp__price-cta" onClick={onSignIn}>
+                Go Pro
+                <ArrowRightIcon />
+              </button>
+            </article>
+
+            <article className="lp__price-card">
+              <h3 className="lp__price-name">Institution</h3>
+              <p className="lp__price-amount">
+                <span className="lp__price-figure">Custom</span>
+              </p>
+              <p className="lp__price-tag">For colleges &amp; universities</p>
+              <ul className="lp__price-features">
+                <li>
+                  <CheckIcon /> Unlimited videos per instructor
+                </li>
+                <li>
+                  <CheckIcon /> LTI 1.3 deep linking
+                </li>
+                <li>
+                  <CheckIcon /> Admin dashboard &amp; reporting
+                </li>
+                <li>
+                  <CheckIcon /> VPAT on request
+                </li>
+                <li>
+                  <CheckIcon /> FERPA-aligned
+                </li>
+              </ul>
+              <a
+                className="lp__btn lp__btn--secondary lp__price-cta"
+                href="mailto:hello@captionflow.link?subject=CaptionFlow%20for%20our%20institution"
+              >
+                Talk to us
+              </a>
+            </article>
+          </div>
+        </section>
+
         <section className="lp__section" aria-labelledby="cta-heading">
           <div className="lp__cta-card">
             <h2 id="cta-heading">Ready to make every embedded video class-ready?</h2>
             <p>
-              Sign in to start authoring captions, or kick the tires with a no-account sync test
-              first.
+              Start free with 5 captioned videos — no credit card, no commitment. Upgrade when
+              you outgrow it.
             </p>
             <div className="lp__cta-row" style={{ justifyContent: 'center' }}>
               <button type="button" className="lp__btn" onClick={onSignIn}>
-                Sign in to your dashboard
+                Sign up free — 5 links
                 <ArrowRightIcon />
               </button>
               <a className="lp__btn lp__btn--secondary" href="/test-play/">

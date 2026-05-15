@@ -6,7 +6,7 @@ export function Footer() {
         &copy; {new Date().getFullYear()} CaptionFlow ·{' '}
         <a href="/legal/privacy.html">Privacy</a> ·{' '}
         <a href="/legal/terms.html">Terms</a> ·{' '}
-        <a href="mailto:support@captionflow.app">support@captionflow.app</a>
+        <a href="mailto:support@captionflow.link">support@captionflow.link</a>
       </p>
     </footer>
   );

@@ -15,10 +15,13 @@ type PubTrack = {
   cues: Cue[];
 };
 
+type OwnerPlan = 'free' | 'pro' | 'institution';
+
 type PubPayload = {
   resourceId: string;
   youtubeVideoId: string;
   defaultCaptionId: string;
+  ownerPlan: OwnerPlan;
   tracks: PubTrack[];
 };
 
@@ -160,6 +163,11 @@ export function CaptionSurface({ resourceId }: { resourceId: string }) {
           Fullscreen (video + captions)
         </button>
       </div>
+      {payload.ownerPlan === 'free' ? (
+        <a className="surface__attribution" href="/" target="_blank" rel="noopener">
+          Captioned with <strong>CaptionFlow</strong>
+        </a>
+      ) : null}
     </div>
   );
 }

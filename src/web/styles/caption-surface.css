@@ -50,3 +50,19 @@
 .fullscreen-bar {
   margin-top: var(--space-2);
 }
+.surface__attribution {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  text-decoration: none;
+  opacity: 0.8;
+}
+.surface__attribution:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+.surface__attribution strong {
+  color: inherit;
+  font-weight: 600;
+}
