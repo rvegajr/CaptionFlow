@@ -17,6 +17,7 @@ dist/
 # Test & coverage artifacts
 playwright-report/
 test-results/
+playwright/.auth/
 coverage/
 *.log
 
@@ -35,3 +36,4 @@ Thumbs.db
 
 # Railway CLI local project link (optional: remove this line if your team commits `.railway/` on purpose)
 .railway/
+.claude/
