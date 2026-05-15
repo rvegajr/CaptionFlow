@@ -1,3 +1,5 @@
+export type InstructorPlan = 'free' | 'pro' | 'institution';
+
 export interface Instructor {
   id: string;
   institutionId: string | null;
@@ -5,6 +7,7 @@ export interface Instructor {
   email: string;
   displayName: string | null;
   role: 'instructor' | 'institution_admin';
+  plan: InstructorPlan;
   createdAt: Date;
 }
 

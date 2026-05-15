@@ -1,0 +1,1 @@
+ALTER TABLE "instructor" ADD COLUMN "plan" text DEFAULT 'free' NOT NULL;

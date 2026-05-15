@@ -36,8 +36,11 @@ export function mapInstructor(r: {
   email: string;
   displayName: string | null;
   role: string | null;
+  plan: string | null;
   createdAt: Date;
 }): Instructor {
+  const plan: Instructor['plan'] =
+    r.plan === 'pro' || r.plan === 'institution' ? r.plan : 'free';
   return {
     id: r.id,
     institutionId: r.institutionId,
@@ -45,6 +48,7 @@ export function mapInstructor(r: {
     email: r.email,
     displayName: r.displayName,
     role: r.role === 'institution_admin' ? 'institution_admin' : 'instructor',
+    plan,
     createdAt: r.createdAt,
   };
 }

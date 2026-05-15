@@ -36,6 +36,9 @@ export const instructor = pgTable(
     role: text('role', { enum: ['instructor', 'institution_admin'] })
       .notNull()
       .default('instructor'),
+    plan: text('plan', { enum: ['free', 'pro', 'institution'] })
+      .notNull()
+      .default('free'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

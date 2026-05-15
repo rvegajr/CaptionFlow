@@ -15,6 +15,13 @@
       "when": 1778551239955,
       "tag": "0001_high_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778758800020,
+      "tag": "0002_add_instructor_plan",
+      "breakpoints": true
     }
   ]
 }

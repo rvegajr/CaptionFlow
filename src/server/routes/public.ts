@@ -22,6 +22,7 @@ export function registerPublicRoutes(app: FastifyInstance, deps: Deps): void {
     }
     const instructor = await deps.instructors.getById(res.instructorId);
     const institutionId = instructor?.institutionId ?? null;
+    const ownerPlan = instructor?.plan ?? 'free';
 
     const all = await deps.captions.listByInstructor(res.instructorId);
     const forVideo = all.filter((c) => c.youtubeVideoId === res.youtubeVideoId);
@@ -48,6 +49,7 @@ export function registerPublicRoutes(app: FastifyInstance, deps: Deps): void {
       resourceId: res.id,
       youtubeVideoId: res.youtubeVideoId,
       defaultCaptionId: res.defaultCaptionId,
+      ownerPlan,
       tracks,
     });
   });

@@ -94,10 +94,12 @@ describe('public surface payload + view metering', () => {
       resourceId: string;
       youtubeVideoId: string;
       defaultCaptionId: string;
+      ownerPlan: 'free' | 'pro' | 'institution';
       tracks: { id: string; languageCode: string; isMachineTranslated: boolean; cues: unknown[] }[];
     };
     expect(body.resourceId).toBe(resourceId);
     expect(body.youtubeVideoId).toBe('dQw4w9WgXcQ');
+    expect(body.ownerPlan).toBe('free');
     expect(body.tracks.length).toBeGreaterThan(0);
     expect(body.tracks[0]!.cues.length).toBeGreaterThan(0);
 
